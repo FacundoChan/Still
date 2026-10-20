@@ -9,7 +9,7 @@ import Testing
 struct ExportRecoveryTests {
     private static let fixture = Fixture.goalA[0]
 
-    /// Five seconds of output at 0.5×, the longest render the product allows.
+    /// Five seconds of output at 0.5×: long enough to cancel partway through.
     private static let slowPlan = EditPlan.centered(start: 0.5, duration: 2.5, speed: 0.5)
 
     @Test func reportsStagesInOrder() async throws {

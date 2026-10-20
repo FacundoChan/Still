@@ -11,7 +11,8 @@ public struct OutputSettings: Sendable, Equatable {
 
     public var frameRate: Int32
     public var maxLongEdge: Int
-    /// Product limit on output length, not a property of the Live Photo format.
+    /// Product limit on output length, not a property of the Live Photo format: Photos pairs 60 s Live
+    /// Photos too. Ten seconds keeps files reasonable, about 2 MB per second of real footage.
     public var durationRange: ClosedRange<Double>
     /// HEVC, as iPhone uses for its own Live Photos; at the same size it keeps more detail than H.264.
     public var videoCodec: VideoCodec
@@ -24,7 +25,7 @@ public struct OutputSettings: Sendable, Equatable {
     public init(
         frameRate: Int32 = 30,
         maxLongEdge: Int = 1920,
-        durationRange: ClosedRange<Double> = 1...5,
+        durationRange: ClosedRange<Double> = 1...10,
         videoCodec: VideoCodec = .hevc,
         bitsPerPixel: Double = 0.25,
         encoderQuality: Double? = nil
