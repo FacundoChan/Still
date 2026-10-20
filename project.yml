@@ -21,6 +21,11 @@ settings:
     ENABLE_HARDENED_RUNTIME: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
     SWIFT_STRICT_CONCURRENCY: complete
+  configs:
+    Release:
+      # Release builds are for distribution: no debugger entitlement (get-task-allow), which
+      # notarization rejects. Xcode otherwise injects it into every `xcodebuild build`.
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
 
 targets:
   StillCore:
