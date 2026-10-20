@@ -26,7 +26,7 @@
 - **Genuine Live Photos.** Still writes the same paired JPEG and MOV the iPhone camera does, with a shared content identifier and a still-image marker, so Photos treats the result as a real Live Photo. It isn't a GIF or a plain video.
 - **Make Key Photo, like on iPhone.** Scrub to any frame and click the bubble. If the frame is outside the selection, the selection comes to it.
 - **Trim with brackets.** Yellow brackets trim directly. A two-level timeline lets you place a 3-second clip precisely in a 10-minute video.
-- **Speed without chipmunks.** Play at 0.5×–2× with pitch-preserved, frame-accurate sound. A duration lock keeps the length while you change speed, and Still shows the motion frame rate before you export.
+- **Speed without chipmunks.** Play at 0.5×–2× with pitch-preserved, frame-accurate sound. Speed keeps the moment you picked, and Still shows the motion frame rate and estimated file size before you export.
 - **Crop to any shape.** Choose a preset (1:1, 4:5, 9:16, …), a custom ratio, or freeform, and reposition with direct handles or exact pixel values.
 - **What you see is what you save.** The preview, the Key Photo, and the export all render through one composition. The LIVE badge plays the actual result in the system Live Photo player.
 - **HDR handled.** iPhone Dolby Vision, HLG, and HDR10 are converted to consistent SDR.
@@ -137,9 +137,9 @@ Scripts/make-fixtures.sh
 xcodebuild test -project Still.xcodeproj -scheme Still -destination 'platform=macOS' -derivedDataPath build/DerivedData
 ```
 
-What the 57 tests cover:
+What the 55 tests cover:
 
-- **Editing rules.** The duration lock, speed, trimming, Make Key Photo, crop, and every example in the specification.
+- **Editing rules.** Speed, trimming, Make Key Photo, crop, size estimates, and every example in the specification.
 - **Live Photo export.** Every fixture is exported, read back, and paired by Photos (`PHLivePhoto`), with a negative control.
 - **Render correctness.** Export vs preview (40–55 dB PSNR), crop geometry, Key Photo fidelity, A/V sync, pitch, and mute.
 - **Frame timing.** Frame-coded clips prove that every output frame shows the source frame the time model predicts.

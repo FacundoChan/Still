@@ -52,8 +52,21 @@ struct StageView: View {
                 if model.isCropMode {
                     CropOverlay(model: model, frame: frame)
                 } else {
-                    LiveBadge(model: model)
-                        .offset(x: frame.minX + 10, y: frame.minY + 10)
+                    HStack(spacing: 6) {
+                        LiveBadge(model: model)
+                        if model.isShowingKeyPhoto && !model.livePreview.isPlaying {
+                            // Says which frame becomes the photo, as the dot does on the timeline.
+                            Text("Key Photo")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.regularMaterial, in: Capsule())
+                                .transition(.opacity)
+                                .accessibilityLabel("Showing the Key Photo")
+                        }
+                    }
+                    .offset(x: frame.minX + 10, y: frame.minY + 10)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: model.isShowingKeyPhoto)
                 }
             }
             .contentShape(Rectangle())

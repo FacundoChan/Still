@@ -71,6 +71,12 @@ targets:
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+      configs:
+        # Debug builds get their own identity, so they run beside an installed copy without sharing its
+        # sandbox container or Photos permission, and the launcher tells them apart.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.chen.Still.debug
+          INFOPLIST_KEY_CFBundleDisplayName: Still Debug
 
   StillCoreTests:
     type: bundle.unit-test

@@ -2,25 +2,23 @@ import CoreGraphics
 import CoreMedia
 import Foundation
 
-public struct DurationLock: Sendable, Equatable {
-    public var isOn: Bool
-    /// Output seconds.
-    public var target: Double
-}
-
 /// Something the UI should briefly tell the user after an edit.
 public enum EditNotice: Sendable, Equatable {
     /// A trim excluded the Key Photo, so it moved to the nearest valid frame.
     case keyPhotoMovedInsideSelection
-    /// A trim with the duration locked stopped at the supported output range.
-    case lockedDurationLimit(ClosedRange<Double>)
+    /// A trim stopped where the output would leave the supported length.
+    case durationLimit(ClosedRange<Double>)
+    /// A speed change would have left the supported length, so the selection was resized around the Key Photo.
+    case selectionResizedForSpeed(ClosedRange<Double>)
 
     public var message: String {
         switch self {
         case .keyPhotoMovedInsideSelection:
             "Key Photo moved inside the selection."
-        case let .lockedDurationLimit(range):
-            String(format: "With the duration locked, the length stays between %.0f and %.0f seconds.", range.lowerBound, range.upperBound)
+        case let .durationLimit(range):
+            String(format: "A Live Photo can be %.0f to %.0f seconds long.", range.lowerBound, range.upperBound)
+        case let .selectionResizedForSpeed(range):
+            String(format: "Selection resized to keep the Live Photo between %.0f and %.0f seconds.", range.lowerBound, range.upperBound)
         }
     }
 }
@@ -29,7 +27,7 @@ public enum EditNotice: Sendable, Equatable {
 public enum EditRejection: Error, Sendable, Equatable, LocalizedError {
     case sourceTooShort(seconds: Double, minimum: Double)
     case needsMoreSource(required: Double, available: Double)
-    case lockTargetOutOfRange(target: Double, range: ClosedRange<Double>)
+    case durationOutOfRange(target: Double, range: ClosedRange<Double>)
     case unsupportedSpeed(Double)
     case invalidAspectRatio
 
@@ -39,7 +37,7 @@ public enum EditRejection: Error, Sendable, Equatable, LocalizedError {
             String(format: "This video is %.2f s long. A Live Photo needs at least %.1f s of video.", seconds, minimum)
         case let .needsMoreSource(required, available):
             String(format: "Needs %.1f s of video; this one is %.1f s.", required, available)
-        case let .lockTargetOutOfRange(_, range):
+        case let .durationOutOfRange(_, range):
             String(format: "Choose a duration from %.0f to %.0f seconds.", range.lowerBound, range.upperBound)
         case let .unsupportedSpeed(speed):
             "\(speed)× isn’t a supported speed."
@@ -70,7 +68,6 @@ public struct EditState: Sendable, Equatable {
     public private(set) var selectionStart: Double
     public private(set) var selectionEnd: Double
     public private(set) var speed: Double
-    public private(set) var durationLock: DurationLock
     public private(set) var keyPhotoTime: Double
     public private(set) var cropAspect: CropAspect
     /// Normalized to the oriented source; see `CropGeometry`.
@@ -89,14 +86,8 @@ public struct EditState: Sendable, Equatable {
         cropRect = CropGeometry.fullFrame
         includesAudio = source.hasAudio
         selectionStart = 0
-        if source.duration >= Self.defaultDuration - Self.tolerance {
-            selectionEnd = Self.defaultDuration
-            durationLock = DurationLock(isOn: true, target: Self.defaultDuration)
-        } else {
-            // Short sources use everything, without padding or a silent speed change.
-            selectionEnd = source.duration
-            durationLock = DurationLock(isOn: false, target: Self.defaultDuration)
-        }
+        // Short sources use everything, without padding or a silent speed change.
+        selectionEnd = min(Self.defaultDuration, source.duration)
         keyPhotoTime = (selectionStart + selectionEnd) / 2
         clampKeyPhoto()
     }
@@ -159,13 +150,25 @@ public struct EditState: Sendable, Equatable {
 
     public var canIncludeAudio: Bool { source.hasAudio }
 
-    /// With the duration lock on, speeds that would need more source than exists are unavailable.
+    /// A speed is unavailable when even the whole source would make less than the minimum output at it.
+    /// The current speed always stays available, so the control never disables its own selection.
     public func unavailabilityReason(forSpeed candidate: Double) -> EditRejection? {
-        guard durationLock.isOn else { return nil }
-        let required = durationLock.target * candidate
+        guard candidate != speed else { return nil }
+        let required = output.durationRange.lowerBound * candidate
         return required > source.duration + Self.tolerance
             ? .needsMoreSource(required: required, available: source.duration)
             : nil
+    }
+
+    /// About how many bytes the Live Photo takes: the video at its average bit rate, the sound, and the JPEG.
+    public var estimatedFileSize: Int64 {
+        let size = outputGeometry.renderSize
+        let pixels = Double(size.width * size.height)
+        let videoBits = pixels * Double(output.frameRate) * output.bitsPerPixel * outputDuration
+        let audioBits = includesAudio ? 128_000 * outputDuration : 0
+        // JPEG at quality 0.92 averages about a third of a byte per pixel on camera footage.
+        let jpegBytes = pixels * 0.35
+        return Int64((videoBits + audioBits) / 8 + jpegBytes)
     }
 
     public func isSpeedAvailable(_ candidate: Double) -> Bool {
@@ -231,8 +234,8 @@ public struct EditState: Sendable, Equatable {
         clampKeyPhoto()
     }
 
-    /// Start-bracket drag: trims the start, as on iPhone. With the lock on, the trimmed length becomes the
-    /// locked duration, and the bracket stops where the output would leave the supported range.
+    /// Start-bracket drag: trims the start, as on iPhone. The bracket stops where the output would leave the
+    /// supported length.
     @discardableResult
     public mutating func setSelectionStart(_ time: Double) -> EditNotice? {
         let lengths = allowedSelectionLengths
@@ -250,74 +253,48 @@ public struct EditState: Sendable, Equatable {
         return finishTrim(limited: abs(selectionEnd - requested) > Self.tolerance)
     }
 
-    /// Source lengths a trim may produce: any with the lock off, the supported output range with it on.
+    /// Source lengths a trim may produce at the current speed: those giving the supported output length.
+    /// A selection already below the minimum, as in a source too short for it, may stay as it is.
     private var allowedSelectionLengths: ClosedRange<Double> {
-        guard durationLock.isOn else { return Self.minimumSelectionLength...Double.greatestFiniteMagnitude }
         let range = output.durationRange
-        return max(Self.minimumSelectionLength, range.lowerBound * speed)...(range.upperBound * speed)
+        let shortest = max(Self.minimumSelectionLength, min(range.lowerBound * speed, selectionLength))
+        return shortest...max(shortest, range.upperBound * speed)
     }
 
     private mutating func finishTrim(limited: Bool) -> EditNotice? {
-        if durationLock.isOn { durationLock.target = outputDuration }
         if let notice = keepKeyPhotoInside() { return notice }
-        return limited && durationLock.isOn ? .lockedDurationLimit(output.durationRange) : nil
+        return limited ? .durationLimit(output.durationRange) : nil
     }
 
-    // MARK: - Speed and duration lock
+    // MARK: - Speed and duration
 
-    /// With the lock on, the selection resizes around the Key Photo to keep the output duration;
-    /// with it off, the selection stays and the output duration changes.
-    public mutating func setSpeed(_ newSpeed: Double) throws {
+    /// Keeps the selected moment, so the output gets longer when slower and shorter when faster. When that
+    /// would leave the supported length, the selection resizes around the Key Photo to the nearest limit.
+    @discardableResult
+    public mutating func setSpeed(_ newSpeed: Double) throws -> EditNotice? {
         guard Self.speeds.contains(newSpeed) else { throw EditRejection.unsupportedSpeed(newSpeed) }
         if let reason = unavailabilityReason(forSpeed: newSpeed) { throw reason }
         speed = newSpeed
-        if durationLock.isOn {
-            resize(toLength: min(durationLock.target * newSpeed, source.duration))
-        } else {
+        let range = output.durationRange
+        let fitted = min(max(outputDuration, range.lowerBound), range.upperBound)
+        guard abs(fitted - outputDuration) > Self.tolerance else {
             clampKeyPhoto()
+            return nil
         }
+        resize(toLength: min(fitted * newSpeed, source.duration))
+        return .selectionResizedForSpeed(range)
     }
 
-    /// Turning the lock on captures the current output duration, or the closest in-range value.
-    public mutating func setDurationLocked(_ locked: Bool) throws {
-        guard locked != durationLock.isOn else { return }
-        guard locked else {
-            durationLock.isOn = false
-            return
-        }
-        let range = output.durationRange
-        let target = min(max(outputDuration, range.lowerBound), range.upperBound)
-        let required = target * speed
-        guard required <= source.duration + Self.tolerance else {
-            throw EditRejection.needsMoreSource(required: required, available: source.duration)
-        }
-        durationLock = DurationLock(isOn: true, target: target)
-        if abs(required - selectionLength) > Self.tolerance {
-            resize(toLength: min(required, source.duration))
-        }
-    }
-
-    /// Output durations the selection can have at the current speed: the supported range, capped by the
-    /// source. Nil when even the shortest needs more video than there is.
-    public var availableDurations: ClosedRange<Double>? {
-        let range = output.durationRange
-        let longest = min(range.upperBound, source.duration / speed)
-        guard longest >= range.lowerBound - Self.tolerance else { return nil }
-        return range.lowerBound...max(range.lowerBound, longest)
-    }
-
-    /// The Duration slider and field: the selection resizes around the Key Photo. With the lock on, this is
-    /// also the locked duration.
+    /// The Duration field: the selection resizes around the Key Photo to give this output length.
     public mutating func setOutputDuration(_ target: Double) throws {
         let range = output.durationRange
         guard target >= range.lowerBound - Self.tolerance, target <= range.upperBound + Self.tolerance else {
-            throw EditRejection.lockTargetOutOfRange(target: target, range: range)
+            throw EditRejection.durationOutOfRange(target: target, range: range)
         }
         let required = target * speed
         guard required <= source.duration + Self.tolerance else {
             throw EditRejection.needsMoreSource(required: required, available: source.duration)
         }
-        durationLock.target = target
         resize(toLength: min(required, source.duration))
     }
 

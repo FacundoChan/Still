@@ -22,7 +22,6 @@ struct RenderCase: Sendable, CustomTestStringConvertible {
 
     func makeState(for source: SourceMedia) throws -> EditState {
         var state = try EditState(source: source.info)
-        try state.setDurationLocked(false)
         state.setSelectionEnd(end)
         state.setSelectionStart(start)
         try state.setSpeed(speed)
@@ -170,6 +169,7 @@ struct RenderCorrectnessTests {
         var state = try EditState(source: source.info)
         state.moveSelection(toStart: 0)
         try state.setSpeed(speed)
+        try state.setOutputDuration(3)
         let directory = Fixture.outputDirectory(for: "render/pitch-\(speed)")
         try? FileManager.default.removeItem(at: directory)
         let pair = try await LivePhotoExporter().export(state.plan, source: source, to: directory, baseName: "LivePhoto")

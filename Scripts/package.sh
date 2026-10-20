@@ -12,6 +12,9 @@
 #   NOTARY_KEY_ID      with its key ID
 #   NOTARY_ISSUER_ID   and issuer ID
 #   NOTARY_PROFILE     Or a keychain profile saved with `xcrun notarytool store-credentials`
+#   NOTARY_TIMEOUT     How long to wait for Apple (default 30m)
+#   NOTARY_REQUIRED    "false" keeps a signed but unnotarized build when Apple is still processing
+#                      at the timeout; a rejection always fails (default true)
 #
 # Output: build/dist/Still-<version>.zip, and Still-<version>.dmg with --dmg.
 
@@ -54,21 +57,34 @@ print "Built $name: $(lipo -archs $app/Contents/MacOS/Still), signed by: $identi
 
 submit() {
     if [[ -n ${NOTARY_PROFILE:-} ]]; then
-        xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 30m --output-format json
+        xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait --timeout "${NOTARY_TIMEOUT:-30m}" --output-format json
     else
         : ${NOTARY_KEY_PATH:?Set NOTARY_KEY_PATH, NOTARY_KEY_ID and NOTARY_ISSUER_ID, or NOTARY_PROFILE}
         xcrun notarytool submit "$1" --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" \
-            --issuer "$NOTARY_ISSUER_ID" --wait --timeout 30m --output-format json
+            --issuer "$NOTARY_ISSUER_ID" --wait --timeout "${NOTARY_TIMEOUT:-30m}" --output-format json
     fi
 }
 
+# Returns 0 when Apple accepted the file, 2 when it is still processing and that is allowed, else exits.
 notarize_file() {
     # Not `status`: zsh reserves it for the last exit code.
     local result outcome id
-    result=$(submit "$1")
+    # notarytool exits non-zero on a timeout; read its JSON either way.
+    result=$(submit "$1") || true
     outcome=$(print -r -- $result | plutil -extract status raw -o - - 2>/dev/null || print unknown)
     id=$(print -r -- $result | plutil -extract id raw -o - - 2>/dev/null || print "")
-    print "Notarization of ${1:t}: $outcome"
+    if [[ $outcome == unknown && $result == *Timeout* ]]; then
+        outcome="In Progress"
+    fi
+    print "Notarization of ${1:t}: $outcome${id:+ (submission $id)}"
+    if [[ $outcome == "In Progress" && ${NOTARY_REQUIRED:-true} == false ]]; then
+        print "Apple is still processing it; keeping the signed build without a notarization ticket."
+        return 2
+    fi
+    if [[ $outcome == "In Progress" ]]; then
+        print -u2 "Apple hasn't finished within ${NOTARY_TIMEOUT:-30m}. Check later with: xcrun notarytool info $id"
+        exit 1
+    fi
     if [[ $outcome != Accepted ]]; then
         [[ -n $id && -n ${NOTARY_PROFILE:-} ]] && xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE"
         [[ -n $id && -z ${NOTARY_PROFILE:-} ]] && xcrun notarytool log "$id" --key "$NOTARY_KEY_PATH" \
@@ -81,12 +97,15 @@ rm -rf $dist && mkdir -p $dist
 zip=$dist/$name.zip
 ditto -c -k --sequesterRsrc --keepParent $app $zip
 
+notarized=false
 if $notarize; then
-    notarize_file $zip
-    xcrun stapler staple $app
-    # Re-zip so the download carries the stapled ticket and opens offline.
-    rm $zip && ditto -c -k --sequesterRsrc --keepParent $app $zip
-    spctl --assess --type execute --verbose=2 $app
+    if notarize_file $zip; then
+        notarized=true
+        xcrun stapler staple $app
+        # Re-zip so the download carries the stapled ticket and opens offline.
+        rm $zip && ditto -c -k --sequesterRsrc --keepParent $app $zip
+        spctl --assess --type execute --verbose=2 $app
+    fi
 fi
 
 if $make_dmg; then
@@ -104,8 +123,8 @@ if $make_dmg; then
         rm -rf $certs
         codesign --sign $signer --timestamp $dmg
     fi
-    if $notarize; then
-        notarize_file $dmg
+    # The DMG is only worth notarizing when the app inside it was.
+    if $notarized && notarize_file $dmg; then
         xcrun stapler staple $dmg
     fi
 fi

@@ -58,27 +58,46 @@ struct TimelineView: View {
 
             Text("Source")
                 .foregroundStyle(.secondary)
+            BracketButton(edge: .leading) { model.setStartAtPlayhead() }
+                .help("Set start to the current frame (I)")
+                .accessibilityLabel("Set Start to Current Frame")
             TimeField(value: state.selectionStart, label: "Selection start") { model.setSelectionStart($0) }
             Text("–").foregroundStyle(.secondary)
             TimeField(value: state.selectionEnd, label: "Selection end") { model.setSelectionEnd($0) }
+            BracketButton(edge: .trailing) { model.setEndAtPlayhead() }
+                .help("Set end to the current frame (O)")
+                .accessibilityLabel("Set End to Current Frame")
 
             Spacer(minLength: 8)
 
             Text(TimeFormat.speed(state.speed))
             Spacer(minLength: 8)
-            if state.durationLock.isOn {
-                Image(systemName: "lock.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .help("Duration locked")
-                    .accessibilityLabel("Duration locked")
-            }
             Text(TimeFormat.seconds(state.outputDuration))
                 .foregroundStyle(state.exportIssue == nil ? Color.primary : Color.orange)
                 .help("Output duration")
         }
         .font(.callout.monospacedDigit())
         .controlSize(.small)
+    }
+}
+
+/// A small copy of a timeline bracket tab: clicking it brings that bracket to the playhead.
+struct BracketButton: View {
+    let edge: HorizontalEdge
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: edge == .leading ? "chevron.compact.left" : "chevron.compact.right")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.black.opacity(0.75))
+                .frame(width: 16, height: 22)
+                .background(TimelineStrip.bracketColor, in: RoundedRectangle(cornerRadius: 4))
+                .opacity(isEnabled ? 1 : 0.4)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -245,12 +264,18 @@ struct TimelineStrip: View {
                 ZStack(alignment: .topLeading) {
                     filmstrip(range: range, scale: scale, height: geometry.size.height)
 
-                    // Outside the selection is dimmed.
+                    // Outside the selection is dimmed. The cutout follows the brackets' rounded corners, so no
+                    // undimmed sliver shows outside them.
                     Path { path in
                         path.addRect(CGRect(origin: .zero, size: geometry.size))
-                        path.addRect(CGRect(x: selection.lowerBound, y: 0, width: selection.upperBound - selection.lowerBound, height: geometry.size.height))
+                        let window = CGRect(x: selection.lowerBound, y: 0, width: max(selection.upperBound - selection.lowerBound, 0), height: geometry.size.height)
+                        if kind == .detail {
+                            path.addRoundedRect(in: window, cornerSize: CGSize(width: BracketFrame.cornerRadius, height: BracketFrame.cornerRadius))
+                        } else {
+                            path.addRect(window)
+                        }
                     }
-                    .fill(Color.black.opacity(0.5), style: FillStyle(eoFill: true))
+                    .fill(Color.black.opacity(0.55), style: FillStyle(eoFill: true))
 
                     if kind == .detail {
                         ticks(state: state, range: range, scale: scale, height: geometry.size.height)
@@ -436,11 +461,13 @@ struct TimelineStrip: View {
 
 /// The trim frame: a rounded outline with wide tabs at both ends, filled even-odd.
 nonisolated struct BracketFrame: Shape {
+    static let cornerRadius: CGFloat = 6
+
     var tabWidth: CGFloat
     var border: CGFloat = 3
 
     func path(in rect: CGRect) -> Path {
-        var path = Path(roundedRect: rect, cornerRadius: 6)
+        var path = Path(roundedRect: rect, cornerRadius: Self.cornerRadius)
         let inner = rect.insetBy(dx: tabWidth, dy: border)
         if inner.width > 0 {
             path.addRoundedRect(in: inner, cornerSize: CGSize(width: 2, height: 2))

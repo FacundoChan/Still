@@ -14,21 +14,19 @@ struct EditStateTests {
 
     // MARK: - Initial state (§5)
 
-    @Test func longSourceStartsWithLockedThreeSeconds() throws {
+    @Test func longSourceStartsWithThreeSeconds() throws {
         let state = try EditState(source: source(42))
         #expect(state.selectionStart == 0 && state.selectionEnd == 3)
         #expect(state.speed == 1)
-        #expect(state.durationLock == DurationLock(isOn: true, target: 3))
         #expect(state.cropAspect == .original && state.cropRect == CropGeometry.fullFrame)
         #expect(close(state.keyPhotoTime, 1.5))
         #expect(state.includesAudio)
         #expect(state.exportIssue == nil)
     }
 
-    @Test func shortSourceUsesEverythingUnlocked() throws {
+    @Test func shortSourceUsesEverything() throws {
         let state = try EditState(source: source(2))
         #expect(state.selectionStart == 0 && state.selectionEnd == 2)
-        #expect(!state.durationLock.isOn)
         #expect(close(state.outputDuration, 2))
         #expect(state.speed == 1, "Short sources must not silently change speed")
     }
@@ -46,22 +44,45 @@ struct EditStateTests {
         }
     }
 
-    // MARK: - §6 lock and Key Photo examples
+    // MARK: - §6 speed and Key Photo examples
 
-    @Test func speedChangeResizesAroundKeyPhoto() throws {
-        // Locked at 3 s, 1×, selection 10.5–13.5 s with the Key Photo at 12 s; change to 2×.
+    @Test func speedChangeKeepsTheMoment() throws {
+        // Selection 10–13 s: 1× gives 3 s, 2× gives 1.5 s, 0.5× gives 6 s.
         var state = try EditState(source: source(20))
-        state.makeKeyPhoto(at: 12)
-        #expect(close(state.selectionStart, 10.5) && close(state.selectionEnd, 13.5))
-        try state.setSpeed(2)
-        #expect(close(state.selectionStart, 9) && close(state.selectionEnd, 15))
+        state.makeKeyPhoto(at: 11.5)
+        #expect(close(state.selectionStart, 10) && close(state.selectionEnd, 13))
+        #expect(try state.setSpeed(2) == nil)
+        #expect(close(state.selectionStart, 10) && close(state.selectionEnd, 13))
+        #expect(close(state.outputDuration, 1.5) && close(state.keyPhotoTime, 11.5))
+        #expect(try state.setSpeed(0.5) == nil)
+        #expect(close(state.outputDuration, 6))
+    }
+
+    @Test func slowingPastTheLimitShrinksAroundTheKeyPhoto() throws {
+        // Selection 10–16 s with the Key Photo at 12 s; 0.5× would make 12 s, so the selection becomes 5 s.
+        var state = try EditState(source: source(30))
+        state.moveSelection(toStart: 10)
+        state.setSelectionEnd(16)
+        state.setKeyPhoto(at: 12)
+        #expect(try state.setSpeed(0.5) == .selectionResizedForSpeed(1...10))
+        #expect(close(state.selectionLength, 5) && close(state.outputDuration, 10))
+        #expect(close(state.selectionStart, 12 - 5.0 / 3), "The Key Photo keeps its place in the selection")
         #expect(close(state.keyPhotoTime, 12))
-        #expect(close(state.keyPhotoOutputTime, 1.5))
-        #expect(close(state.outputDuration, 3))
+        #expect(state.exportIssue == nil)
+    }
+
+    @Test func speedingUpBelowTheMinimumGrowsAroundTheKeyPhoto() throws {
+        var state = try EditState(source: source(20))
+        state.makeKeyPhoto(at: 10)
+        state.setSelectionEnd(11)
+        state.setSelectionStart(10)
+        #expect(close(state.selectionLength, 1))
+        #expect(try state.setSpeed(2) == .selectionResizedForSpeed(1...10))
+        #expect(close(state.selectionLength, 2) && close(state.outputDuration, 1))
     }
 
     @Test func makeKeyPhotoOutsideNearStartShiftsInward() throws {
-        // Locked at 3 s, 1×, selection 10–13 s; Make Key Photo at 1.0 s → 0–3 s, Key Photo at output 1.0 s.
+        // Selection 10–13 s; Make Key Photo at 1.0 s → 0–3 s, Key Photo at output 1.0 s.
         var state = try EditState(source: source(20))
         state.moveSelection(toStart: 10)
         state.makeKeyPhoto(at: 1)
@@ -101,72 +122,57 @@ struct EditStateTests {
         #expect(state.suggestedSpeed == 0.5)
     }
 
-    @Test func noSuggestionWhenHalfSpeedIsNotEnough() throws {
-        var state = try EditState(source: source(20))
-        try state.setDurationLocked(false)
-        state.setSelectionEnd(0.4)  // 0.8 s at 0.5×, still under 1 s
-        #expect(state.exportIssue == .outputTooShort(seconds: 0.4, minimum: 1))
-        #expect(state.suggestedSpeed == nil)
-    }
-
-    @Test func lockDisablesSpeedsThatNeedMoreSource() throws {
-        // 4.2 s source, locked at 3 s → 1.5× and 2× disabled; 0.5×, 0.75×, 1× available.
-        var state = try EditState(source: source(4.2))
-        #expect(state.durationLock.isOn)
-        #expect(state.isSpeedAvailable(0.5) && state.isSpeedAvailable(0.75) && state.isSpeedAvailable(1))
-        #expect(!state.isSpeedAvailable(1.5) && !state.isSpeedAvailable(2))
-        #expect(state.unavailabilityReason(forSpeed: 2) == .needsMoreSource(required: 6, available: 4.2))
-        #expect(state.unavailabilityReason(forSpeed: 2)?.errorDescription == "Needs 6.0 s of video; this one is 4.2 s.")
+    @Test func speedsTheSourceCanNotFillAreDisabled() throws {
+        // A 1.5 s source can't make 1 s of output at 2×.
+        var state = try EditState(source: source(1.5))
+        #expect(state.isSpeedAvailable(0.5) && state.isSpeedAvailable(1.5))
+        #expect(state.unavailabilityReason(forSpeed: 2) == .needsMoreSource(required: 2, available: 1.5))
+        #expect(state.unavailabilityReason(forSpeed: 2)?.errorDescription == "Needs 2.0 s of video; this one is 1.5 s.")
 
         let before = state
         #expect(throws: EditRejection.self) { try state.setSpeed(2) }
         #expect(state == before, "A rejected edit must leave the state unchanged")
     }
 
-    // MARK: - Duration lock behavior
-
-    @Test func lockedTrimSetsTheLockedDuration() throws {
-        var state = try EditState(source: source(20))
-        state.moveSelection(toStart: 10)
-        #expect(state.setSelectionEnd(14) == nil)
-        #expect(close(state.selectionStart, 10) && close(state.selectionEnd, 14))
-        #expect(state.durationLock == DurationLock(isOn: true, target: 4))
-        #expect(state.setSelectionStart(11.5) == nil)
-        #expect(close(state.durationLock.target, 2.5))
-
-        // A later speed change keeps the trimmed length.
-        try state.setSpeed(0.5)
-        #expect(close(state.outputDuration, 2.5))
+    @Test func theCurrentSpeedIsNeverDisabled() throws {
+        let state = try EditState(source: source(0.8))
+        #expect(state.isSpeedAvailable(1), "1× is current even though it can't make 1 s here")
+        #expect(state.isSpeedAvailable(0.75) && !state.isSpeedAvailable(1.5))
     }
 
-    @Test func lockedTrimStopsAtTheSupportedRange() throws {
+    // MARK: - Trimming
+
+    @Test func trimStopsAtTheSupportedLength() throws {
         var state = try EditState(source: source(40))
         state.moveSelection(toStart: 10)
-        #expect(state.setSelectionEnd(28) == .lockedDurationLimit(1...10))
-        #expect(close(state.selectionEnd, 20) && close(state.durationLock.target, 10))
+        #expect(state.setSelectionEnd(28) == .durationLimit(1...10))
+        #expect(close(state.selectionEnd, 20))
         state.setKeyPhoto(at: 19.5)
-        #expect(state.setSelectionStart(19.8) == .lockedDurationLimit(1...10))
-        #expect(close(state.selectionStart, 19) && close(state.durationLock.target, 1))
+        #expect(state.setSelectionStart(19.8) == .durationLimit(1...10))
+        #expect(close(state.selectionStart, 19))
 
-        // At 2× a locked output of 1–10 s spans 2–20 s of source.
+        // At 2× the supported 1–10 s of output spans 2–20 s of source.
         try state.setSpeed(2)
         #expect(close(state.selectionStart, 18.5) && close(state.selectionEnd, 20.5))
-        #expect(state.setSelectionEnd(60) == .lockedDurationLimit(1...10))
-        #expect(close(state.selectionEnd, 38.5) && close(state.durationLock.target, 10))
-
-        // The end of the source stops a trim first without a limit message.
-        state.moveSelection(toStart: 20)
-        #expect(state.setSelectionEnd(45) == nil)
-        #expect(close(state.selectionEnd, 40))
+        #expect(state.setSelectionEnd(60) == .durationLimit(1...10))
+        #expect(close(state.selectionEnd, 38.5))
         #expect(state.exportIssue == nil)
     }
 
-    @Test func lockedTrimThatExcludesKeyPhotoMovesItInside() throws {
+    @Test func theSourceEndStopsATrimWithoutAMessage() throws {
+        var state = try EditState(source: source(12))
+        state.moveSelection(toStart: 9)
+        #expect(state.setSelectionEnd(20) == nil)
+        #expect(close(state.selectionEnd, 12))
+    }
+
+    @Test func trimThatExcludesKeyPhotoMovesItInside() throws {
         var state = try EditState(source: source(20))
         state.moveSelection(toStart: 10)
         state.setKeyPhoto(at: 10.5)
         #expect(state.setSelectionStart(11) == .keyPhotoMovedInsideSelection)
         #expect(close(state.keyPhotoTime, 11))
+        #expect(state.setSelectionEnd(12.9) == nil, "The Key Photo is still inside; no notice")
     }
 
     @Test func movingPastTheEndShiftsInward() throws {
@@ -175,79 +181,34 @@ struct EditStateTests {
         #expect(close(state.selectionStart, 7) && close(state.selectionEnd, 10))
     }
 
-    @Test func unlockedSpeedChangeKeepsTheInterval() throws {
-        var state = try EditState(source: source(20))
-        try state.setDurationLocked(false)
-        try state.setSpeed(2)
-        #expect(state.selectionStart == 0 && close(state.selectionEnd, 3))
-        #expect(close(state.outputDuration, 1.5))
-    }
-
-    @Test func unlockedOutputOutOfRangeDisablesExport() throws {
-        var state = try EditState(source: source(20))
-        try state.setDurationLocked(false)
-        state.setSelectionEnd(12)
-        #expect(state.exportIssue == .outputTooLong(seconds: 12, maximum: 10))
-        try state.setSpeed(2)
-        #expect(state.exportIssue == nil, "12 s of source at 2× is 6 s of output")
-        state.setSelectionEnd(20)
-        #expect(state.exportIssue == nil, "20 s at 2× is exactly the 10 s limit")
-        try state.setSpeed(1.5)
-        guard case .outputTooLong(_, maximum: 10) = state.exportIssue else {
-            Issue.record("20 s at 1.5× should be too long, got \(String(describing: state.exportIssue))")
-            return
-        }
-    }
-
-    @Test func unlockedTrimThatExcludesKeyPhotoMovesItInside() throws {
-        var state = try EditState(source: source(20))
-        try state.setDurationLocked(false)
-        state.setKeyPhoto(at: 1)
-        let notice = state.setSelectionStart(2)
-        #expect(notice == .keyPhotoMovedInsideSelection)
-        #expect(close(state.keyPhotoTime, 2))
-        #expect(state.setSelectionStart(2.5) == .keyPhotoMovedInsideSelection)
-        #expect(state.setSelectionEnd(2.9) == nil, "The Key Photo is still inside; no notice")
-    }
-
-    @Test func lockingCapturesOutputDurationOrNearestInRange() throws {
-        var state = try EditState(source: source(20))
-        try state.setDurationLocked(false)
-        state.setSelectionEnd(4)
-        try state.setDurationLocked(true)
-        #expect(state.durationLock == DurationLock(isOn: true, target: 4))
-
-        try state.setDurationLocked(false)
-        state.setSelectionEnd(14)
-        try state.setDurationLocked(true)
-        #expect(state.durationLock.target == 10, "14 s is outside 1–10 s; the closest in-range value is 10 s")
-        #expect(close(state.selectionLength, 10))
-    }
+    // MARK: - Duration field
 
     @Test func outputDurationValidation() throws {
         var state = try EditState(source: source(4))
-        #expect(throws: EditRejection.lockTargetOutOfRange(target: 11, range: 1...10)) { try state.setOutputDuration(11) }
+        #expect(throws: EditRejection.durationOutOfRange(target: 11, range: 1...10)) { try state.setOutputDuration(11) }
         #expect(throws: EditRejection.needsMoreSource(required: 4.5, available: 4)) { try state.setOutputDuration(4.5) }
         try state.setOutputDuration(2)
         #expect(close(state.outputDuration, 2))
-        #expect(state.availableDurations == 1...4)
-        try state.setSpeed(0.5)
-        #expect(state.availableDurations == 1...8)
     }
 
-    @Test func outputDurationResizesAroundTheKeyPhotoWithTheLockOff() throws {
+    @Test func outputDurationResizesAroundTheKeyPhoto() throws {
         var state = try EditState(source: source(20))
-        try state.setDurationLocked(false)
         state.makeKeyPhoto(at: 12)  // Selection 10.5–13.5 s, Key Photo in the middle.
         try state.setOutputDuration(5)
         #expect(close(state.selectionStart, 9.5) && close(state.selectionEnd, 14.5))
         #expect(close(state.keyPhotoTime, 12))
-        #expect(!state.durationLock.isOn)
     }
 
-    @Test func noDurationsAvailableForTooShortASource() throws {
-        let state = try EditState(source: source(0.8))
-        #expect(state.availableDurations == nil)
+    // MARK: - Output size
+
+    @Test func estimatedSizeAddsVideoSoundAndPhoto() throws {
+        // 1080 × 1920 at 30 fps and 0.25 bpp for 3 s: 5.83 MB of video, 48 kB of sound, and about 0.73 MB of JPEG.
+        var state = try EditState(source: source(10, size: CGSize(width: 1080, height: 1920)))
+        #expect(abs(Double(state.estimatedFileSize) - 6_605_760) < 1)
+        state.setIncludesAudio(false)
+        #expect(abs(Double(state.estimatedFileSize) - 6_557_760) < 1)
+        try state.setSpeed(0.5)
+        #expect(state.estimatedFileSize > 12_000_000, "Twice the length is about twice the video")
     }
 
     @Test func keyPhotoClampsToLastRenderedFrame() throws {

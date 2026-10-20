@@ -21,6 +21,7 @@ struct TimelineWindowTests {
     @Test func outputFrameMapping() throws {
         var state = try EditState(source: SourceInfo(duration: 20, frameRate: 30, orientedSize: .init(width: 1920, height: 1080), hasAudio: true))
         try state.setSpeed(2)
+        try state.setOutputDuration(3)  // 6 s of source at 2×.
         state.moveSelection(toStart: 10)
         #expect(state.sourceTime(ofOutputFrame: 30) == 12)
         #expect(state.outputFrame(atSourceTime: 12) == 30)

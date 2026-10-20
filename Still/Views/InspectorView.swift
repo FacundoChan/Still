@@ -6,6 +6,7 @@ import SwiftUI
 struct InspectorView: View {
     @Bindable var model: EditorModel
     @State private var isCustomRatioPresented = false
+    @State private var showsCropFields = false
 
     var body: some View {
         if let state = model.state {
@@ -55,47 +56,15 @@ struct InspectorView: View {
                     Text("s").foregroundStyle(.secondary)
                 }
             }
-            if let durations = state.availableDurations {
-                Slider(
-                    value: Binding(
-                        get: { min(max(state.outputDuration, durations.lowerBound), durations.upperBound) },
-                        // Tenths of a second; a stepped slider would draw a tick for every one.
-                        set: { value in
-                            let tenths = min(max((value * 10).rounded() / 10, durations.lowerBound), durations.upperBound)
-                            model.adjust("Change Duration") { try $0.setOutputDuration(tenths) }
-                        }
-                    ),
-                    in: durations
-                ) {
-                    Text("Duration")
-                } minimumValueLabel: {
-                    Text(TimeFormat.shortSeconds(durations.lowerBound))
-                } maximumValueLabel: {
-                    Text(TimeFormat.shortSeconds(durations.upperBound))
-                } onEditingChanged: { editing in
-                    if editing { model.beginInteraction() } else { model.endInteraction("Change Duration") }
-                }
-                .labelsHidden()
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityValue(TimeFormat.seconds(state.outputDuration))
-            }
-            Toggle("Lock duration", isOn: Binding(
-                get: { state.durationLock.isOn },
-                set: { model.setDurationLocked($0) }
-            ))
-            .help("Keeps this length when you change speed or move the selection")
-            if abs(state.outputDuration - EditState.defaultDuration) > 0.001,
-               state.availableDurations?.contains(EditState.defaultDuration) == true {
-                Button("Use 3 Seconds") { model.setOutputDuration(EditState.defaultDuration) }
-            }
+            .help("The Live Photo's length, 1 to 10 seconds; the selection resizes around the Key Photo")
         }
     }
 
     // MARK: - Crop
 
     private func cropSection(_ state: EditState) -> some View {
-        Section("Crop") {
+        let isCropped = state.cropAspect != .original || state.cropRect != CropGeometry.fullFrame
+        return Section("Crop") {
             LabeledContent("Ratio") {
                 Menu(state.cropAspect.title) {
                     ForEach(CropAspect.presets, id: \.self) { aspect in
@@ -120,15 +89,40 @@ struct InspectorView: View {
                     }
                 }
             }
-            if model.isCropMode {
-                CropFields(state: state) { model.setCropRect($0) }
-                Button("Done") { model.isCropMode = false }
-                    .keyboardShortcut(.defaultAction)
-            } else {
-                Button("Edit Crop") { model.isCropMode = true }
+            HStack {
+                if model.isCropMode {
+                    Button("Done") { model.isCropMode = false }
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Edit Crop") { model.isCropMode = true }
+                        .help("Crop (C)")
+                }
+                Spacer()
+                if isCropped {
+                    Button("Reset", systemImage: "arrow.counterclockwise") { model.resetCrop() }
+                        .buttonStyle(.borderless)
+                        .help("Reset Crop")
+                }
             }
-            Button("Reset Crop") { model.resetCrop() }
-                .disabled(state.cropAspect == .original && state.cropRect == CropGeometry.fullFrame)
+            // A plain row rather than DisclosureGroup, which in a grouped Form ignores accessibility presses.
+            Button {
+                showsCropFields.toggle()
+            } label: {
+                HStack {
+                    Text("Position and Size")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showsCropFields ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsCropFields ? "Shown" : "Hidden")
+            if showsCropFields {
+                CropFields(state: state) { model.setCropRect($0) }
+            }
         }
     }
 
@@ -154,7 +148,13 @@ struct InspectorView: View {
 
     private func keyPhotoSection(_ state: EditState) -> some View {
         Section("Key Photo") {
-            keyPhotoThumbnail(state)
+            Button {
+                model.showKeyPhoto()
+            } label: {
+                keyPhotoThumbnail(state)
+            }
+            .buttonStyle(.plain)
+            .help("Show the Key Photo on the stage")
             let frames = state.plan.outputFrameCount
             if frames > 1 {
                 // Scrubs through the rendered frames, like dragging the frame viewer in Photos on iPhone.
@@ -213,6 +213,9 @@ struct InspectorView: View {
                 .monospacedDigit()
             Text("\(state.output.frameRate) fps · Sound \(state.includesAudio ? "on" : "off")")
                 .foregroundStyle(.secondary)
+            Text("About \(ByteCountFormatter.string(fromByteCount: state.estimatedFileSize, countStyle: .file))")
+                .foregroundStyle(.secondary)
+                .help("Estimated size of the Live Photo's photo and video")
             if state.isLowResolution {
                 Label("Low resolution", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)

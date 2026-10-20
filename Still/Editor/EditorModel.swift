@@ -245,6 +245,20 @@ final class EditorModel {
         edit("Make Key Photo") { $0.makeKeyPhoto(at: playhead) }
     }
 
+    /// Shows the Key Photo on the stage, at full resolution and with the exported framing.
+    func showKeyPhoto() {
+        guard let state else { return }
+        playback.pause()
+        scrub(to: state.keyPhotoTime)
+    }
+
+    /// Whether the stage is showing the Key Photo frame, so it can say so.
+    var isShowingKeyPhoto: Bool {
+        guard let state, phase == .ready, !playback.isPlaying, !livePreview.isPlaying, !isCropMode,
+              state.isInsideSelection(playhead) else { return false }
+        return !offersMakeKeyPhoto
+    }
+
     /// The Make Key Photo bubble shows while paused on any frame but the Key Photo, as in Photos on iPhone.
     var offersMakeKeyPhoto: Bool {
         guard let state, phase == .ready, !playback.isPlaying, !livePreview.isPlaying else { return false }
@@ -279,11 +293,9 @@ final class EditorModel {
     }
 
     func setSpeed(_ speed: Double) {
-        edit("Change Speed") { try $0.setSpeed(speed) }
-    }
-
-    func setDurationLocked(_ locked: Bool) {
-        edit(locked ? "Lock Duration" : "Unlock Duration") { try $0.setDurationLocked(locked) }
+        var notice: EditNotice?
+        edit("Change Speed") { notice = try $0.setSpeed(speed) }
+        if let notice { show(notice.message) }
     }
 
     func setOutputDuration(_ target: Double) {
