@@ -69,8 +69,10 @@ submit() {
 notarize_file() {
     # Not `status`: zsh reserves it for the last exit code.
     local result outcome id
-    # notarytool exits non-zero on a timeout; read its JSON either way.
-    result=$(submit "$1") || true
+    # notarytool exits non-zero on a timeout and writes that JSON to stderr; read it either way, from the
+    # last JSON line.
+    result=$(submit "$1" 2>&1) || true
+    result=$(print -r -- $result | grep '^{' | tail -1)
     outcome=$(print -r -- $result | plutil -extract status raw -o - - 2>/dev/null || print unknown)
     id=$(print -r -- $result | plutil -extract id raw -o - - 2>/dev/null || print "")
     if [[ $outcome == unknown && $result == *Timeout* ]]; then
