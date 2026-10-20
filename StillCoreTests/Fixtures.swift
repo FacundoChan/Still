@@ -32,7 +32,8 @@ struct Fixture: Sendable, CustomTestStringConvertible {
 
     /// Scratch output for one fixture, kept after the run so the files can be inspected.
     static func outputDirectory(for name: String) -> URL {
-        root.appending(path: "build/test-output/\(name)")
+        // Colons (as in “9:16”) aren't allowed in uploaded CI artifacts.
+        root.appending(path: "build/test-output/\(name.replacingOccurrences(of: ":", with: "-"))")
     }
 }
 
