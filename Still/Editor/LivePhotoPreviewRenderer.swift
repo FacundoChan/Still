@@ -1,0 +1,99 @@
+import AppKit
+import Observation
+import Photos
+import StillCore
+
+/// Renders a reduced-size Live Photo in the background once edits settle, for the LIVE preview and the
+/// inspector’s Key Photo (goal.md §7, “Live Photo preview”). It uses the export pipeline, so the Key Photo
+/// shown is the one that will be saved.
+@Observable
+final class LivePhotoPreviewRenderer {
+    static let longEdge = 720
+
+    private(set) var isRendering = false
+    private(set) var livePhoto: PHLivePhoto?
+    private(set) var keyPhoto: NSImage?
+    /// The edit the current preview was rendered from.
+    private(set) var renderedPlan: EditPlan?
+    /// Whether the LIVE overlay is playing.
+    var isPlaying = false
+
+    @ObservationIgnored private var task: Task<Void, Never>?
+    @ObservationIgnored private var playWhenReady = false
+    @ObservationIgnored private var directory: URL?
+
+    func isCurrent(for plan: EditPlan) -> Bool {
+        renderedPlan == plan
+    }
+
+    /// Renders `plan` after `delay`, replacing any render still waiting or running.
+    func schedule(_ plan: EditPlan, source: SourceMedia, delay: Duration = .milliseconds(600)) {
+        task?.cancel()
+        guard plan.issue(sourceDuration: source.duration) == nil else {
+            isRendering = false
+            return
+        }
+        isRendering = true
+        task = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.render(plan, source: source)
+        }
+    }
+
+    /// Plays the preview now, or as soon as the render in progress finishes.
+    func play() {
+        if livePhoto != nil && !isRendering {
+            isPlaying = true
+        } else if isRendering {
+            playWhenReady = true
+        }
+    }
+
+    func stop() {
+        playWhenReady = false
+        isPlaying = false
+    }
+
+    func reset() {
+        task?.cancel()
+        stop()
+        isRendering = false
+        livePhoto = nil
+        keyPhoto = nil
+        renderedPlan = nil
+        removeDirectory()
+    }
+
+    private func render(_ plan: EditPlan, source: SourceMedia) async {
+        var reduced = plan
+        reduced.output.maxLongEdge = Self.longEdge
+        let directory = TemporaryFiles.previews.appending(path: UUID().uuidString)
+        do {
+            let pair = try await LivePhotoExporter().export(reduced, source: source, to: directory, baseName: "Preview")
+            let photo = try await LivePhotoInspector.loadLivePhoto(imageURL: pair.imageURL, videoURL: pair.videoURL)
+            guard !Task.isCancelled else {
+                try? FileManager.default.removeItem(at: directory)
+                return
+            }
+            removeDirectory()
+            self.directory = directory
+            livePhoto = photo
+            keyPhoto = NSImage(contentsOf: pair.imageURL)
+            renderedPlan = plan
+            isRendering = false
+            if playWhenReady {
+                playWhenReady = false
+                isPlaying = true
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            if !Task.isCancelled { isRendering = false }
+        }
+    }
+
+    private func removeDirectory() {
+        if let directory { try? FileManager.default.removeItem(at: directory) }
+        directory = nil
+    }
+}

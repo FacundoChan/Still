@@ -1,0 +1,131 @@
+name: Build
+
+# Every push and pull request is built and tested. Packaging always produces a downloadable build; it is
+# signed with Developer ID and notarized once the signing secrets exist (see README, "Continuous
+# integration"). Tags named v* also publish a draft release with the DMG.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE: /Applications/Xcode_27.1.app
+  TEAM_ID: 3287GPH578
+
+jobs:
+  build:
+    name: Test and package
+    # Xcode 27 preview image: the same Xcode 27.1 (27A9275) the project is developed with.
+    runs-on: xcode-27
+    timeout-minutes: 60
+    env:
+      HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12_BASE64 != '' }}
+      HAS_NOTARY: ${{ secrets.NOTARY_KEY_P8_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select --switch "$XCODE" && xcodebuild -version
+
+      - name: Install tools
+        run: brew install xcodegen ffmpeg xcbeautify
+
+      - name: Cache synthetic fixtures
+        id: fixtures
+        uses: actions/cache@v4
+        with:
+          path: Fixtures/synthetic
+          key: fixtures-${{ hashFiles('Scripts/make-fixtures.sh') }}
+
+      - name: Generate fixtures
+        if: steps.fixtures.outputs.cache-hit != 'true'
+        run: Scripts/make-fixtures.sh
+
+      - name: Test
+        run: |
+          xcodegen generate
+          # No certificate on the runner: sign ad hoc. The owner's iPhone clips aren't in the repository,
+          # so their test cases are skipped here.
+          set -o pipefail
+          xcodebuild test -project Still.xcodeproj -scheme Still -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData -resultBundlePath build/TestResults.xcresult \
+            CODE_SIGN_IDENTITY=- | tee build/test.log | grep -E "^(✔|✘|◇ Suite|\*\*)|error:" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" build/test.log
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            build/TestResults.xcresult
+            build/test.log
+            build/test-output
+          retention-days: 7
+
+      - name: Import Developer ID certificate
+        if: env.HAS_SIGNING == 'true'
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -base64 24)
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+          security find-identity -v -p codesigning "$keychain"
+
+      - name: Prepare notarization key
+        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          KEY_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+        run: |
+          echo "$KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+
+      - name: Build, sign, and notarize
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          args=(--dmg)
+          if [[ "$HAS_SIGNING" == true ]]; then
+            export SIGN_IDENTITY="Developer ID Application"
+            [[ "$HAS_NOTARY" == true ]] && args+=(--notarize)
+          else
+            # Without the certificate, still prove the Release build works; the result runs only after
+            # the user approves it in System Settings.
+            export SIGN_IDENTITY=-
+            echo "::warning::Signing secrets are not set; this build is signed ad hoc and not notarized."
+          fi
+          Scripts/package.sh "${args[@]}"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Still-${{ github.run_number }}
+          path: build/dist/*
+          retention-days: 30
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_SIGNING == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/dist/* --draft --generate-notes --title "Still ${GITHUB_REF_NAME#v}"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/notary.p8"
