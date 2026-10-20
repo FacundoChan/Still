@@ -63,12 +63,13 @@ submit() {
 }
 
 notarize_file() {
-    local result status id
+    # Not `status`: zsh reserves it for the last exit code.
+    local result outcome id
     result=$(submit "$1")
-    status=$(print -r -- $result | plutil -extract status raw -o - - 2>/dev/null || print unknown)
+    outcome=$(print -r -- $result | plutil -extract status raw -o - - 2>/dev/null || print unknown)
     id=$(print -r -- $result | plutil -extract id raw -o - - 2>/dev/null || print "")
-    print "Notarization of ${1:t}: $status"
-    if [[ $status != Accepted ]]; then
+    print "Notarization of ${1:t}: $outcome"
+    if [[ $outcome != Accepted ]]; then
         [[ -n $id && -n ${NOTARY_PROFILE:-} ]] && xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE"
         [[ -n $id && -z ${NOTARY_PROFILE:-} ]] && xcrun notarytool log "$id" --key "$NOTARY_KEY_PATH" \
             --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID"
