@@ -50,6 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    /// Each window is one video; with none left, Still has nothing to show (the owner's choice).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         WindowCoordinator.shared.openExternal(urls)
     }

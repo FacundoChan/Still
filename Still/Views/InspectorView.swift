@@ -185,27 +185,7 @@ struct InspectorView: View {
             }
             .buttonStyle(.plain)
             .help("Show the Key Photo on the stage")
-            let frames = state.plan.outputFrameCount
-            if frames > 1 {
-                // Scrubs through the rendered frames, like dragging the frame viewer in Photos on iPhone.
-                Slider(
-                    value: Binding(
-                        get: { Double(state.plan.keyPhotoFrameIndex) },
-                        set: { value in
-                            model.adjust("Move Key Photo") { $0.setKeyPhoto(at: $0.sourceTime(ofOutputFrame: Int64(value.rounded()))) }
-                            if let key = model.state?.keyPhotoTime { model.scrub(to: key) }
-                        }
-                    ),
-                    in: 0...Double(frames - 1)
-                ) {
-                    Text("Key Photo frame")
-                } onEditingChanged: { editing in
-                    if editing { model.beginInteraction() } else { model.endInteraction("Move Key Photo") }
-                }
-                .labelsHidden()
-                .accessibilityValue("Frame \(state.plan.keyPhotoFrameIndex + 1) of \(frames)")
-            }
-            LabeledContent("Frame", value: "\(state.plan.keyPhotoFrameIndex + 1) of \(frames)")
+            LabeledContent("Frame", value: "\(state.plan.keyPhotoFrameIndex + 1) of \(state.plan.outputFrameCount)")
                 .monospacedDigit()
         }
     }

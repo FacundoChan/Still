@@ -85,6 +85,13 @@ final class WindowCloseGuard: NSObject, NSWindowDelegate {
         return forwardee?.windowShouldClose?(sender) ?? true
     }
 
+    func windowWillClose(_ notification: Notification) {
+        // The window has already asked. Leave the coordinator now, before AppKit checks whether this was the
+        // last window and quits, so quitting doesn't ask again.
+        if let model { WindowCoordinator.shared.unregister(model) }
+        forwardee?.windowWillClose?(notification)
+    }
+
     nonisolated override func responds(to selector: Selector!) -> Bool {
         super.responds(to: selector) || (forwardee?.responds(to: selector) ?? false)
     }

@@ -193,15 +193,6 @@ final class EditorModel {
         if next != state { state = next }
     }
 
-    /// Slider changes: a drag is one undo step, and so is each step from the keyboard.
-    func adjust(_ actionName: String, _ change: (inout EditState) throws -> Void) {
-        if interactionStart != nil {
-            interact { try? change(&$0); return nil }
-        } else {
-            edit(actionName, change)
-        }
-    }
-
     func endInteraction(_ actionName: String) {
         defer {
             interactionStart = nil
