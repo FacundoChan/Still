@@ -64,24 +64,39 @@ struct InspectorView: View {
 
     private func cropSection(_ state: EditState) -> some View {
         let isCropped = state.cropAspect != .original || state.cropRect != CropGeometry.fullFrame
+        // The button shows the crop as it is, which for Freeform is whatever shape was dragged.
+        let size = state.outputGeometry.renderSize
+        let currentRatio = Double(size.width / size.height)
         return Section("Crop") {
             LabeledContent("Ratio") {
-                Menu(state.cropAspect.title) {
+                Menu {
                     ForEach(CropAspect.presets, id: \.self) { aspect in
-                        Button {
-                            model.setCropAspect(aspect)
-                        } label: {
-                            if aspect == state.cropAspect {
-                                Label(aspect.title, systemImage: "checkmark")
-                            } else {
+                        Toggle(isOn: Binding(
+                            get: { aspect == state.cropAspect },
+                            set: { _ in model.setCropAspect(aspect) }
+                        )) {
+                            Label {
                                 Text(aspect.title)
+                            } icon: {
+                                Image(nsImage: AspectGlyph.image(
+                                    ratio: aspect.pixelRatio(for: state.source.orientedSize) ?? 1,
+                                    dashed: aspect == .freeform
+                                ))
                             }
                         }
                     }
                     Divider()
                     Button("Custom…") { isCustomRatioPresented = true }
+                } label: {
+                    Label {
+                        Text(state.cropAspect.title)
+                    } icon: {
+                        Image(nsImage: AspectGlyph.image(ratio: currentRatio, dashed: state.cropAspect == .freeform))
+                    }
+                    .labelStyle(.titleAndIcon)
                 }
                 .fixedSize()
+                .accessibilityValue(AspectGlyph.orientation(ratio: currentRatio))
                 .popover(isPresented: $isCustomRatioPresented, arrowEdge: .leading) {
                     CustomRatioForm { width, height in
                         isCustomRatioPresented = false

@@ -47,6 +47,17 @@ final class WindowCoordinator {
         for url in queued { open(url, preferring: editor) }
     }
 
+    /// The menu bar's openWindow, for when files arrive or a menu command runs before any window has appeared.
+    func provide(_ openWindow: OpenWindowAction) {
+        guard self.openWindow == nil else { return }
+        self.openWindow = openWindow
+        let queued = queuedExternalFiles
+        queuedExternalFiles.removeAll()
+        guard !queued.isEmpty else { return }
+        // Not while the menu bar is updating.
+        Task { for url in queued { open(url, preferring: activeEditor) } }
+    }
+
     func unregister(_ editor: EditorModel) {
         editors.removeAll { $0.editor == nil || $0.editor === editor }
         if activeEditor === editor { activeEditor = openEditors.last }

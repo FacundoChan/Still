@@ -207,8 +207,11 @@ struct ExportProgressView: View {
 /// Menu commands; they act on the focused window, or open a new one when none is open.
 struct EditorCommands: Commands {
     @FocusedValue(\.editor) private var editor
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        // The menu bar exists from launch; a window doesn't when Still starts by opening a video.
+        let _ = WindowCoordinator.shared.provide(openWindow)
         CommandGroup(after: .newItem) {
             Button("Open Video…") { present(.presentOpenPanel) }
                 .keyboardShortcut("o")
