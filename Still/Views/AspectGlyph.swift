@@ -34,6 +34,9 @@ enum AspectGlyph {
         return image
     }
 
+    /// Holds a glyph's space in a menu whose other items have one.
+    static let blank = NSImage(size: NSSize(width: 16, height: 16))
+
     /// For VoiceOver and tooltips.
     static func orientation(ratio: Double) -> String {
         if abs(ratio - 1) < 0.01 { return "Square" }

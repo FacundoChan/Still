@@ -16,8 +16,8 @@ struct EditorWindow: View {
 
     var body: some View {
         content
-            // With the toolbar and the 252-point inspector, the window bottoms out at about 900 × 640 (goal.md §4).
-            .frame(minWidth: 648, minHeight: 588)
+            // With the toolbar and the inspector, the window bottoms out at about 900 × 640 (goal.md §4).
+            .frame(minWidth: 614, minHeight: 588)
             .overlay {
                 VideoDropTarget(isTargeted: $isDropTargeted) { url in
                     model.requestOpen(url)
@@ -30,7 +30,9 @@ struct EditorWindow: View {
             .toolbar { EditorToolbar(model: model) }
             .inspector(isPresented: .constant(model.phase == .ready)) {
                 InspectorView(model: model)
-                    .inspectorColumnWidth(min: 240, ideal: 252, max: 280)
+                    // Ideally wide enough for the speeds at the regular size; at the minimum they fit at
+                    // the small size.
+                    .inspectorColumnWidth(min: 248, ideal: 286, max: 320)
             }
             .fileImporter(isPresented: $model.isImporterPresented, allowedContentTypes: [.movie]) { result in
                 if case let .success(url) = result { model.requestOpen(url) }

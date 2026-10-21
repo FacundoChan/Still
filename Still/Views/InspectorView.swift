@@ -67,6 +67,7 @@ struct InspectorView: View {
         // The button shows the crop as it is, which for Freeform is whatever shape was dragged.
         let size = state.outputGeometry.renderSize
         let currentRatio = Double(size.width / size.height)
+        let customRatio: Double? = if case let .custom(width, height) = state.cropAspect { width / height } else { nil }
         return Section("Crop") {
             LabeledContent("Ratio") {
                 Menu {
@@ -83,10 +84,24 @@ struct InspectorView: View {
                                     dashed: aspect == .freeform
                                 ))
                             }
+                            // macOS menus otherwise drop a Label's icon.
+                            .labelStyle(.titleAndIcon)
                         }
                     }
                     Divider()
-                    Button("Custom…") { isCustomRatioPresented = true }
+                    // Checked, with its shape, while a custom ratio is in use.
+                    Toggle(isOn: Binding(
+                        get: { customRatio != nil },
+                        set: { _ in isCustomRatioPresented = true }
+                    )) {
+                        Label {
+                            Text("Custom…")
+                        } icon: {
+                            // Blank otherwise, so the title lines up with the others.
+                            Image(nsImage: customRatio.map { AspectGlyph.image(ratio: $0) } ?? AspectGlyph.blank)
+                        }
+                        .labelStyle(.titleAndIcon)
+                    }
                 } label: {
                     Label {
                         Text(state.cropAspect.title)
@@ -368,14 +383,13 @@ struct SpeedControl: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(onSelect: onSelect) }
 
-    func makeNSView(context: Context) -> NSSegmentedControl {
-        let control = NSSegmentedControl(
+    func makeNSView(context: Context) -> FittingSegmentedControl {
+        let control = FittingSegmentedControl(
             labels: speeds.map(TimeFormat.speed),
             trackingMode: .selectOne,
             target: context.coordinator,
             action: #selector(Coordinator.changed(_:))
         )
-        control.segmentDistribution = .fillEqually
         control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         control.setAccessibilityLabel("Speed")
         return control
@@ -383,16 +397,13 @@ struct SpeedControl: NSViewRepresentable {
 
     /// Takes the width the inspector offers instead of the control's natural width, which could push the
     /// form wider than its column.
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView control: NSSegmentedControl, context: Context) -> CGSize? {
-        // In a narrow inspector the regular size can't fit five equal segments; the small size can.
-        if let width = proposal.width {
-            control.controlSize = .regular
-            if control.intrinsicContentSize.width > width { control.controlSize = .small }
-        }
-        return CGSize(width: proposal.width ?? control.intrinsicContentSize.width, height: control.intrinsicContentSize.height)
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView control: FittingSegmentedControl, context: Context) -> CGSize? {
+        let natural = control.naturalSize(for: .regular)
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? natural.width
+        return CGSize(width: width, height: control.naturalSize(for: control.controlSize(forWidth: width)).height)
     }
 
-    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+    func updateNSView(_ control: FittingSegmentedControl, context: Context) {
         context.coordinator.onSelect = onSelect
         context.coordinator.speeds = speeds
         for (index, speed) in speeds.enumerated() {
@@ -415,5 +426,41 @@ struct SpeedControl: NSViewRepresentable {
             guard speeds.indices.contains(sender.selectedSegment) else { return }
             onSelect(speeds[sender.selectedSegment])
         }
+    }
+}
+
+/// Fits its segments to the width it's given: the regular size when the labels fit, otherwise the small
+/// size. Segments share the width in proportion to their labels, so the control fills its row and never
+/// draws past it.
+final class FittingSegmentedControl: NSSegmentedControl {
+    private var naturalSizes: [NSControl.ControlSize: CGSize] = [:]
+
+    func controlSize(forWidth width: CGFloat) -> NSControl.ControlSize {
+        width >= naturalSize(for: .regular).width ? .regular : .small
+    }
+
+    /// The width the labels need at `size`, and the control's height there; measured once on a copy.
+    func naturalSize(for size: NSControl.ControlSize) -> CGSize {
+        if let measured = naturalSizes[size] { return measured }
+        let probe = NSSegmentedControl(
+            labels: (0..<segmentCount).map { label(forSegment: $0) ?? "" },
+            trackingMode: .selectOne, target: nil, action: nil
+        )
+        Self.style(probe, size: size)
+        naturalSizes[size] = probe.intrinsicContentSize
+        return probe.intrinsicContentSize
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let size = controlSize(forWidth: newSize.width)
+        if size != controlSize || segmentDistribution != .fillProportionally { Self.style(self, size: size) }
+        super.setFrameSize(newSize)
+    }
+
+    private static func style(_ control: NSSegmentedControl, size: NSControl.ControlSize) {
+        control.controlSize = size
+        // The control size alone keeps the regular font, and so nearly the regular width.
+        control.font = .systemFont(ofSize: NSFont.systemFontSize(for: size))
+        control.segmentDistribution = .fillProportionally
     }
 }
