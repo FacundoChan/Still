@@ -295,18 +295,15 @@ struct TimelineStrip: View {
     /// Each thumbnail covers its own slot of source time, so images from a previous range stay in the
     /// right place while new ones load.
     private func filmstrip(range: ClosedRange<Double>, scale: TimeScale, height: CGFloat) -> some View {
-        let strip = kind == .detail ? model.thumbnails.detail : model.thumbnails.overview
-        let slotSpan = strip.count > 0 ? (strip.range.upperBound - strip.range.lowerBound) / Double(strip.count) : 0
-        let slotWidth = CGFloat(slotSpan * scale.pointsPerSecond)
-        return ZStack(alignment: .topLeading) {
+        ZStack(alignment: .topLeading) {
             Rectangle().fill(Color.secondary.opacity(0.15))
-            ForEach(strip.thumbnails) { thumbnail in
+            ForEach(model.thumbnails.thumbnails(strip, in: range)) { thumbnail in
                 Image(nsImage: thumbnail.image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: slotWidth + 0.5, height: height)
+                    .frame(width: CGFloat(thumbnail.slot.span * scale.pointsPerSecond) + 0.5, height: height)
                     .clipped()
-                    .offset(x: scale.x(thumbnail.time - slotSpan / 2))
+                    .offset(x: scale.x(thumbnail.slot.start))
             }
         }
         .frame(width: scale.width, height: height, alignment: .topLeading)
@@ -435,12 +432,15 @@ struct TimelineStrip: View {
     }
 
     private func requestThumbnails(source: SourceMedia, range: ClosedRange<Double>, size: CGSize, state: EditState) {
+        guard size.width > 0, size.height > 0 else { return }
         let aspect = state.source.orientedSize.width / max(state.source.orientedSize.height, 1)
-        let count = max(1, Int((size.width / max(size.height * aspect, 8)).rounded(.up)))
-        switch kind {
-        case .detail: model.thumbnails.loadDetail(source: source, range: range, count: count)
-        case .overview: model.thumbnails.loadOverview(source: source, count: count)
-        }
+        // The source time one thumbnail covers at its natural width.
+        let span = (range.upperBound - range.lowerBound) * Double(size.height * aspect / size.width)
+        model.thumbnails.load(strip, source: source, range: range, thumbnailSpan: span)
+    }
+
+    private var strip: ThumbnailProvider.Strip {
+        kind == .detail ? .detail : .overview
     }
 }
 
