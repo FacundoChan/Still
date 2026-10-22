@@ -245,28 +245,14 @@ struct InspectorView: View {
 struct DurationField: View {
     let value: Double
     let commit: (Double) -> Void
-    @State private var text = ""
-    @FocusState private var isFocused: Bool
 
     var body: some View {
-        TextField("Duration", text: $text)
-            .labelsHidden()
-            .multilineTextAlignment(.trailing)
-            .frame(width: 56)
-            .focused($isFocused)
-            .onSubmit(apply)
-            .onChange(of: isFocused) { _, focused in if !focused { apply() } }
-            .onChange(of: value, initial: true) { _, newValue in
-                if !isFocused { text = TimeFormat.fieldSeconds(newValue) }
-            }
-            .accessibilityLabel("Duration in seconds")
-    }
-
-    private func apply() {
-        if let seconds = Double(text.trimmingCharacters(in: .whitespaces)), abs(seconds - value) > 0.0005 {
-            commit(seconds)
-        }
-        text = TimeFormat.fieldSeconds(value)
+        NumericField(
+            label: "Duration", value: value, tolerance: 0.0005, format: TimeFormat.fieldSeconds,
+            parse: { Double($0) }, commit: commit
+        )
+        .frame(width: 56)
+        .accessibilityLabel("Duration in seconds")
     }
 }
 
@@ -302,28 +288,14 @@ struct PixelField: View {
     let value: Double
     let label: String
     let commit: (Double) -> Void
-    @State private var text = ""
-    @FocusState private var isFocused: Bool
 
     var body: some View {
-        TextField(label, text: $text)
-            .labelsHidden()
-            .multilineTextAlignment(.trailing)
-            .frame(width: 58)
-            .focused($isFocused)
-            .onSubmit(apply)
-            .onChange(of: isFocused) { _, focused in if !focused { apply() } }
-            .onChange(of: value, initial: true) { _, newValue in
-                if !isFocused { text = String(Int(newValue.rounded())) }
-            }
-            .accessibilityLabel("Crop \(label) in pixels")
-    }
-
-    private func apply() {
-        if let pixels = Double(text.trimmingCharacters(in: .whitespaces)), abs(pixels - value) >= 0.5 {
-            commit(pixels)
-        }
-        text = String(Int(value.rounded()))
+        NumericField(
+            label: label, value: value, tolerance: 0.5, format: { String(Int($0.rounded())) },
+            parse: { Double($0) }, commit: commit
+        )
+        .frame(width: 58)
+        .accessibilityLabel("Crop \(label) in pixels")
     }
 }
 

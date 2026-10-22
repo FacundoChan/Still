@@ -19,10 +19,23 @@ struct EditorContent: View {
         .focused($isFocused)
         .focusEffectDisabled()
         .onKeyPress(phases: [.down, .repeat]) { press in
-            model.handleKey(press) ? .handled : .ignored
+            // Keys typed in a Source field belong to it, Return and Space included.
+            guard !(NSApp.keyWindow?.firstResponder is NSText) else { return .ignored }
+            return model.handleKey(press) ? .handled : .ignored
         }
-        .simultaneousGesture(TapGesture().onEnded { isFocused = true })
+        .simultaneousGesture(TapGesture().onEnded {
+            // Taking focus here would pull it straight back out of a Source field the click just focused.
+            if !Self.isTextFieldClick { isFocused = true }
+        })
         .onAppear { isFocused = true }
+    }
+
+    /// Whether the click being handled landed in a text field.
+    private static var isTextFieldClick: Bool {
+        guard let event = NSApp.currentEvent, let window = event.window,
+              let hit = window.contentView?.hitTest(event.locationInWindow) else { return false }
+        // NSText covers the field editor, which sits over a text field while it's being edited.
+        return hit is NSTextField || hit is NSText
     }
 }
 

@@ -200,37 +200,22 @@ nonisolated struct CalloutShape: Shape {
     }
 }
 
-/// A numeric seconds field that commits on Return or when focus leaves (goal.md §11, numeric alternatives).
+/// A seconds field for the selection's start or end.
 struct TimeField: View {
     let value: Double
     let label: String
     let commit: (Double) -> Void
 
-    @State private var text = ""
-    @FocusState private var isFocused: Bool
-
     var body: some View {
-        TextField(label, text: $text)
-            .labelsHidden()
-            .textFieldStyle(.roundedBorder)
-            .multilineTextAlignment(.trailing)
-            .frame(width: 64)
-            .focused($isFocused)
-            .onSubmit(apply)
-            .onChange(of: isFocused) { _, focused in if !focused { apply() } }
-            .onChange(of: value, initial: true) { _, newValue in
-                if !isFocused { text = TimeFormat.fieldSeconds(newValue) }
-            }
-            .accessibilityLabel(label)
-            .accessibilityValue(TimeFormat.seconds(value))
-    }
-
-    private func apply() {
-        if let seconds = Double(text.replacingOccurrences(of: "s", with: "").trimmingCharacters(in: .whitespaces)),
-           abs(seconds - value) > 0.0005 {
-            commit(seconds)
-        }
-        text = TimeFormat.fieldSeconds(value)
+        NumericField(
+            label: label, value: value, tolerance: 0.0005, format: TimeFormat.fieldSeconds,
+            parse: { Double($0.replacingOccurrences(of: "s", with: "").trimmingCharacters(in: .whitespaces)) },
+            commit: commit
+        )
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 64)
+        .accessibilityLabel(label)
+        .accessibilityValue(TimeFormat.seconds(value))
     }
 }
 

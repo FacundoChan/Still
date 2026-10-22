@@ -135,15 +135,8 @@ struct EditorToolbar: ToolbarContent {
     @Bindable var model: EditorModel
 
     var body: some ToolbarContent {
+        // Crop mode is entered from the inspector's Crop section, beside the controls it works with.
         if model.phase == .ready {
-            ToolbarItem(placement: .primaryAction) {
-                Toggle(isOn: $model.isCropMode) {
-                    Label("Crop", systemImage: "crop")
-                }
-                .help("Crop (C)")
-            }
-            // Its own glass group, so the primary action can be prominent (goal.md §4).
-            ToolbarSpacer(.fixed, placement: .primaryAction)
             ToolbarItem(placement: .primaryAction) {
                 saveControl
             }
