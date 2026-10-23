@@ -96,6 +96,8 @@ cd Still && xcodegen generate && open Still.xcodeproj
 
 Choose the **Still** scheme and press ⌘R. To build under your own Apple ID, first set `DEVELOPMENT_TEAM` in [`project.yml`](project.yml) to your team ID. The Xcode project is generated from that file, so edit it rather than the project.
 
+To install your build as `/Applications/Still.app`, run `Scripts/install.sh`.
+
 ## Project structure
 
 | Path | Contents |
