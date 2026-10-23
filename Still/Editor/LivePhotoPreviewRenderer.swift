@@ -15,6 +15,9 @@ final class LivePhotoPreviewRenderer {
     private(set) var keyPhoto: NSImage?
     /// The edit the current preview was rendered from.
     private(set) var renderedPlan: EditPlan?
+    /// How the latest preview actually encoded, for the size estimate. It's kept while a new preview renders:
+    /// the same video at a slightly different edit encodes much the same.
+    private(set) var sizeCalibration: SizeCalibration?
     /// Whether the LIVE overlay is playing.
     var isPlaying = false
 
@@ -62,6 +65,7 @@ final class LivePhotoPreviewRenderer {
         livePhoto = nil
         keyPhoto = nil
         renderedPlan = nil
+        sizeCalibration = nil
         removeDirectory()
     }
 
@@ -72,6 +76,7 @@ final class LivePhotoPreviewRenderer {
         do {
             let pair = try await LivePhotoExporter().export(reduced, source: source, to: directory, baseName: "Preview")
             let photo = try await LivePhotoInspector.loadLivePhoto(imageURL: pair.imageURL, videoURL: pair.videoURL)
+            let calibration = try? await SizeCalibration.measure(pair, plan: reduced)
             guard !Task.isCancelled else {
                 try? FileManager.default.removeItem(at: directory)
                 return
@@ -80,6 +85,7 @@ final class LivePhotoPreviewRenderer {
             self.directory = directory
             livePhoto = photo
             keyPhoto = Self.image(at: pair.imageURL)
+            if let calibration { sizeCalibration = calibration }
             renderedPlan = plan
             isRendering = false
             if playWhenReady {

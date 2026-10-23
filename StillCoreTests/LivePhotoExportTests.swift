@@ -106,6 +106,7 @@ struct LivePhotoExportTests {
         let fixture = try #require(Fixture.goalA.first { $0.name == "landscape-sdr-30fps-6s.mov" })
         let source = try await SourceMedia.load(fixture.url)
         var movieSizes: [VideoBitRate: Int] = [:]
+        var calibrations: [VideoBitRate: SizeCalibration] = [:]
         for bitRate in [VideoBitRate.low, .veryHigh] {
             var plan = EditPlan.centered(start: fixture.selectionStart, duration: 3)
             plan.output.maxLongEdge = OutputResolution.hd.maxLongEdge
@@ -115,8 +116,14 @@ struct LivePhotoExportTests {
             let pair = try await LivePhotoExporter().export(plan, source: source, to: directory, baseName: "LivePhoto")
             #expect(pair.pixelSize == CGSize(width: 1280, height: 720))
             movieSizes[bitRate] = try FileManager.default.attributesOfItem(atPath: pair.videoURL.path)[.size] as? Int
+            calibrations[bitRate] = try await SizeCalibration.measure(pair, plan: plan)
         }
         let low = try #require(movieSizes[.low]), veryHigh = try #require(movieSizes[.veryHigh])
+        // The test pattern needs few bits, so the encoder leaves most of Very High unused, and the size estimate
+        // has to learn that from a render rather than trust the target.
+        let calibration = try #require(calibrations[.veryHigh])
+        #expect(calibration.videoRateFactor < 0.5)
+        #expect(calibration.photoBytesPerPixel > 0)
         print("MEASURE 720p movie: low \(low) bytes, very high \(veryHigh) bytes")
         #expect(Double(veryHigh) > Double(low) * 1.5)
     }

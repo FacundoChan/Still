@@ -253,6 +253,23 @@ struct EditStateTests {
         #expect(state.estimatedFileSize < standard)
     }
 
+    @Test func calibrationAdjustsTheEstimateToTheFootage() throws {
+        var state = try EditState(source: source(10, size: CGSize(width: 2160, height: 3840)))
+        state.setResolution(.uhd)
+        let preview = 404.0 * 720
+        // Footage that used exactly the target at 720p, with a typical JPEG, estimates close to the formula.
+        let typical = SizeCalibration(videoRateFactor: 1, photoBytesPerPixel: 0.53, pixelCount: preview)
+        #expect(abs(Double(state.estimatedFileSize(calibration: typical)) / Double(state.estimatedFileSize) - 1) < 0.1)
+        // Simple footage that used a fifth of it at 720p uses even less at 4K.
+        let simple = SizeCalibration(videoRateFactor: 0.2, photoBytesPerPixel: 0.13, pixelCount: preview)
+        #expect(Double(state.estimatedFileSize(calibration: simple)) < Double(state.estimatedFileSize) * 0.1)
+        // Detailed footage that overshot by half at 720p overshoots only a little at 4K.
+        let detailed = SizeCalibration(videoRateFactor: 1.56, photoBytesPerPixel: 0.81, pixelCount: preview)
+        let ratio = Double(state.estimatedFileSize(calibration: detailed)) / Double(state.estimatedFileSize)
+        #expect(ratio > 1 && ratio < 1.25)
+        #expect(SizeCalibration.rateFactor(1.56, scaledBy: 1) == 1.56, "At the measured size the factor applies as is")
+    }
+
     @Test func hdrSourcesKeepHDRUnlessTurnedOff() throws {
         var hdr = try EditState(source: SourceInfo(duration: 10, frameRate: 30, orientedSize: CGSize(width: 2160, height: 3840), hasAudio: true, isHDR: true))
         #expect(hdr.canUseHDR && hdr.isHDR && hdr.plan.output.dynamicRange == .high)

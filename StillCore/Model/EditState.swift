@@ -193,14 +193,26 @@ public struct EditState: Sendable, Equatable {
     }
 
     /// About how many bytes the Live Photo takes: the video at its average bit rate, the sound, and the JPEG.
-    public var estimatedFileSize: Int64 {
+    public var estimatedFileSize: Int64 { estimatedFileSize(calibration: nil) }
+
+    /// The estimate, adjusted to how this video actually encodes when `calibration` is available.
+    ///
+    /// The bit rate is the encoder's target, not a promise: detailed footage overshoots it a little, and simple
+    /// footage leaves most of it unused, more so at higher bit rates and sizes. The JPEG's size varies with
+    /// detail too.
+    public func estimatedFileSize(calibration: SizeCalibration?) -> Int64 {
         let size = outputGeometry.renderSize
         let pixels = Double(size.width * size.height)
-        let videoBits = Double(output.averageVideoBitRate(for: size)) * outputDuration
-        let audioBits = includesAudio ? 128_000 * outputDuration : 0
+        var videoBits = Double(output.averageVideoBitRate(for: size)) * outputDuration
         // JPEG at quality 0.92 averages about a third of a byte per pixel on camera footage. An HDR gain map adds
         // about a quarter.
-        let jpegBytes = pixels * (isHDR ? 0.45 : 0.35)
+        var jpegBytes = pixels * (isHDR ? 0.45 : 0.35)
+        if let calibration, calibration.pixelCount > 0 {
+            let ratio = max(pixels / calibration.pixelCount, 1)
+            videoBits *= SizeCalibration.rateFactor(calibration.videoRateFactor, scaledBy: ratio)
+            jpegBytes = calibration.photoBytesPerPixel * calibration.pixelCount * pow(ratio, SizeCalibration.photoExponent)
+        }
+        let audioBits = includesAudio ? 128_000 * outputDuration : 0
         return Int64((videoBits + audioBits) / 8 + jpegBytes)
     }
 
@@ -410,4 +422,33 @@ public struct EditState: Sendable, Equatable {
         clampKeyPhoto()
         return excluded ? .keyPhotoMovedInsideSelection : nil
     }
+}
+
+/// How this video actually encoded in a smaller render of the same edit, such as the Live Photo preview. The
+/// size estimate scales it to the output size.
+public struct SizeCalibration: Sendable, Equatable {
+    /// The video bit rate the encoder spent, as a share of the rate it was asked for.
+    public var videoRateFactor: Double
+    /// Key Photo bytes per pixel.
+    public var photoBytesPerPixel: Double
+    /// Pixels in the render measured.
+    public var pixelCount: Double
+
+    public init(videoRateFactor: Double, photoBytesPerPixel: Double, pixelCount: Double) {
+        self.videoRateFactor = videoRateFactor
+        self.photoBytesPerPixel = photoBytesPerPixel
+        self.pixelCount = pixelCount
+    }
+
+    /// The share of the target bit rate at `ratio` times the measured pixels. Footage that overshoots overshoots
+    /// less at larger sizes, and footage that leaves bits unused leaves more unused: larger frames have less
+    /// detail per pixel. The exponent fits three clips (detailed, typical and a test pattern) measured from the
+    /// 720-pixel preview to 1080p and 4K.
+    static func rateFactor(_ factor: Double, scaledBy ratio: Double) -> Double {
+        let scale = pow(ratio, -0.45)
+        return factor >= 1 ? 1 + (factor - 1) * scale : factor * scale
+    }
+
+    /// JPEG bytes grow with about the 0.8th power of the pixel count, for the same reason.
+    static let photoExponent = 0.8
 }

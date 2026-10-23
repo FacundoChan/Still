@@ -266,7 +266,7 @@ struct InspectorView: View {
                 .monospacedDigit()
             Text("\(state.output.frameRate) fps · \(Self.megabits(state.output.averageVideoBitRate(for: size)))\(state.isHDR ? " · HDR" : "") · Sound \(state.includesAudio ? "on" : "off")")
                 .foregroundStyle(.secondary)
-            Text("About \(ByteCountFormatter.string(fromByteCount: state.estimatedFileSize, countStyle: .file))")
+            Text("About \(ByteCountFormatter.string(fromByteCount: state.estimatedFileSize(calibration: model.livePreview.sizeCalibration), countStyle: .file))")
                 .foregroundStyle(.secondary)
                 .help("Estimated size of the Live Photo's photo and video")
             if state.isLowResolution {
