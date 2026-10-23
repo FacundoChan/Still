@@ -263,36 +263,29 @@ struct InspectorView: View {
     private func outputSection(_ state: EditState) -> some View {
         Section("Output") {
             LabeledContent("Resolution") {
-                Menu {
-                    ForEach(OutputResolution.allCases, id: \.self) { resolution in
+                ColumnMenu(
+                    title: state.resolution?.title ?? "Custom",
+                    items: OutputResolution.allCases.map { resolution in
                         let size = state.renderSize(at: resolution)
-                        Toggle(isOn: Binding(
-                            get: { resolution == state.resolution },
-                            set: { _ in model.setResolution(resolution) }
-                        )) {
-                            Text("\(resolution.title) (\(Int(size.width)) × \(Int(size.height)))")
-                        }
-                        .disabled(!state.isResolutionAvailable(resolution))
-                    }
-                } label: {
-                    Text(state.resolution?.title ?? "Custom")
-                }
+                        return .init(value: resolution, title: resolution.title,
+                                     detail: "\(Int(size.width).formatted()) × \(Int(size.height).formatted())",
+                                     isEnabled: state.isResolutionAvailable(resolution))
+                    },
+                    selection: state.resolution,
+                    choose: { model.setResolution($0) }
+                )
                 .fixedSize()
             }
             .help("Size of the photo and the video. A video isn't enlarged past its own size.")
             LabeledContent("Bit rate") {
-                Menu {
-                    ForEach(VideoBitRate.allCases, id: \.self) { bitRate in
-                        Toggle(isOn: Binding(
-                            get: { bitRate == state.bitRate },
-                            set: { _ in model.setBitRate(bitRate) }
-                        )) {
-                            Text("\(bitRate.title) (\(Self.megabits(state.videoBitRate(at: bitRate))))")
-                        }
-                    }
-                } label: {
-                    Text(state.bitRate?.title ?? "Custom")
-                }
+                ColumnMenu(
+                    title: state.bitRate?.title ?? "Custom",
+                    items: VideoBitRate.allCases.map { bitRate in
+                        .init(value: bitRate, title: bitRate.title, detail: Self.megabits(state.videoBitRate(at: bitRate)))
+                    },
+                    selection: state.bitRate,
+                    choose: { model.setBitRate($0) }
+                )
                 .fixedSize()
             }
             .help("Video quality: a higher bit rate keeps more detail and makes a larger file")
