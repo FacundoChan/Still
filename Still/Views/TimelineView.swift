@@ -170,12 +170,11 @@ struct KeyPhotoLane: View {
                     model.beginInteraction()
                 }
                 model.interact { $0.setKeyPhoto(at: scale.time(value.location.x)); return nil }
-                if let key = model.state?.keyPhotoTime { model.preview(sourceTime: key) }
+                if let key = model.state?.keyPhotoTime { model.scrub(to: key) }
             }
             .onEnded { _ in
                 isDragging = false
                 model.endInteraction("Move Key Photo")
-                if let key = model.state?.keyPhotoTime { model.scrub(to: key) }
             }
     }
 
@@ -226,11 +225,16 @@ struct TimelineStrip: View {
     @Bindable var model: EditorModel
     let kind: Kind
 
+    /// While dragging, the playhead travels with what is dragged, so the playhead, the time and the stage
+    /// agree, as on iPhone and in QuickTime Player.
     private enum DragMode {
         case scrub
-        case move(startSelection: Double, startTime: Double)
-        case trimStart
-        case trimEnd
+        /// The playhead keeps its place in the selection, or goes to the Key Photo if it was outside.
+        case move(startSelection: Double, startTime: Double, playheadOffset: Double)
+        /// The playhead is on the edge. `grab` is where the pointer took hold relative to the edge, so the
+        /// edge stays under the pointer instead of jumping to it.
+        case trimStart(grab: CGFloat)
+        case trimEnd(grab: CGFloat)
     }
 
     /// Width of the bracket tabs at each end of the selection.
@@ -377,30 +381,28 @@ struct TimelineStrip: View {
                 switch mode {
                 case .scrub:
                     model.scrub(to: time)
-                case let .move(startSelection, startTime):
+                case let .move(startSelection, startTime, playheadOffset):
                     model.interact { $0.moveSelection(toStart: startSelection + time - startTime); return nil }
-                    if let key = model.state?.keyPhotoTime { model.preview(sourceTime: key) }
-                case .trimStart:
-                    model.interact { $0.setSelectionStart(time) }
-                    if let start = model.state?.selectionStart { model.preview(sourceTime: start) }
-                case .trimEnd:
-                    model.interact { $0.setSelectionEnd(time) }
-                    if let end = model.state?.selectionEnd { model.preview(sourceTime: end) }
+                    if let start = model.state?.selectionStart { model.scrub(to: start + playheadOffset) }
+                case let .trimStart(grab):
+                    model.interact { $0.setSelectionStart(scale.time(value.location.x - grab)) }
+                    if let start = model.state?.selectionStart { model.scrub(to: start) }
+                case let .trimEnd(grab):
+                    model.interact { $0.setSelectionEnd(scale.time(value.location.x - grab)) }
+                    if let end = model.state?.selectionEnd { model.scrub(to: end) }
                 }
             }
             .onEnded { value in
                 defer { dragMode = nil }
                 switch dragMode {
-                case let .move(_, startTime) where abs(value.translation.width) < 3:
+                case let .move(_, startTime, _) where abs(value.translation.width) < 3:
                     // A click inside the selection moves the playhead rather than the selection.
                     model.endInteraction("Move Selection")
                     model.scrub(to: startTime)
                 case .move:
                     model.endInteraction("Move Selection")
-                    model.scrub(to: model.playhead)
                 case .trimStart, .trimEnd:
                     model.endInteraction("Trim")
-                    model.scrub(to: model.playhead)
                 case .scrub, nil:
                     model.frozenDetailRange = nil
                 }
@@ -417,11 +419,13 @@ struct TimelineStrip: View {
         let onEnd = point.x >= end - tab - 2 && point.x <= end + 6
         let mode: DragMode
         if kind == .detail && onStart && (!onEnd || abs(point.x - start) <= abs(point.x - end)) {
-            mode = .trimStart
+            mode = .trimStart(grab: point.x - start)
         } else if kind == .detail && onEnd {
-            mode = .trimEnd
+            mode = .trimEnd(grab: point.x - end)
         } else if point.x > start && point.x < end {
-            mode = .move(startSelection: state.selectionStart, startTime: scale.time(point.x))
+            let playhead = state.isInsideSelection(model.playhead) ? model.playhead : state.keyPhotoTime
+            mode = .move(startSelection: state.selectionStart, startTime: scale.time(point.x),
+                         playheadOffset: playhead - state.selectionStart)
         } else {
             mode = .scrub
         }

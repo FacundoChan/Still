@@ -14,17 +14,18 @@ public enum TimelineWindow {
     }
 
     /// The detail strip’s range: the selection with padding, or the playhead’s neighborhood while the user
-    /// scrubs outside it. Clamped to the source, keeping its width where possible.
+    /// scrubs outside it. A nil playhead keeps the selection in view wherever the playhead is, as after the
+    /// user moves or trims the selection. Clamped to the source, keeping its width where possible.
     public static func detailRange(
         selection: ClosedRange<Double>,
-        playhead: Double,
+        playhead: Double?,
         sourceDuration: Double
     ) -> ClosedRange<Double> {
         guard showsOverview(sourceDuration: sourceDuration) else { return 0...sourceDuration }
         var lower = selection.lowerBound - detailPadding
         var upper = selection.upperBound + detailPadding
         let width = upper - lower
-        if playhead < lower || playhead > upper {
+        if let playhead, playhead < lower || playhead > upper {
             lower = playhead - width / 2
             upper = playhead + width / 2
         }

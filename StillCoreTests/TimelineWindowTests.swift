@@ -18,6 +18,12 @@ struct TimelineWindowTests {
         #expect(TimelineWindow.detailRange(selection: 100...103, playhead: 300, sourceDuration: 600) == 296.5...303.5)
     }
 
+    /// After the selection moves, the strip keeps it in view even with the playhead far away.
+    @Test func detailKeepsTheSelectionWithoutAPlayhead() {
+        #expect(TimelineWindow.detailRange(selection: 4...7, playhead: 15, sourceDuration: 20) == 11.5...18.5)
+        #expect(TimelineWindow.detailRange(selection: 4...7, playhead: nil, sourceDuration: 20) == 2...9)
+    }
+
     @Test func outputFrameMapping() throws {
         var state = try EditState(source: SourceInfo(duration: 20, frameRate: 30, orientedSize: .init(width: 1920, height: 1080), hasAudio: true))
         try state.setSpeed(2)

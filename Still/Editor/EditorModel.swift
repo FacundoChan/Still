@@ -45,6 +45,11 @@ final class EditorModel {
     /// The detail strip’s range while a drag holds it still, so the strip doesn’t slide under the pointer.
     var frozenDetailRange: ClosedRange<Double>?
 
+    /// Whether the detail strip follows the playhead out of the selection's neighborhood. It follows what the
+    /// user moved last: the playhead, by scrubbing, stepping or playing, or the selection, by moving or
+    /// trimming it in either strip.
+    private(set) var detailFollowsPlayhead = true
+
     let playback = PlaybackController()
     let livePreview = LivePhotoPreviewRenderer()
     let thumbnails = ThumbnailProvider()
@@ -64,6 +69,7 @@ final class EditorModel {
     init() {
         playback.onPlaybackTime = { [weak self] time in
             self?.playhead = time
+            self?.followPlayhead()
         }
     }
 
@@ -106,7 +112,7 @@ final class EditorModel {
         guard let state else { return 0...1 }
         return TimelineWindow.detailRange(
             selection: state.selectionStart...state.selectionEnd,
-            playhead: playhead,
+            playhead: detailFollowsPlayhead ? playhead : nil,
             sourceDuration: state.source.duration
         )
     }
@@ -127,6 +133,7 @@ final class EditorModel {
             state = initial
             savedState = initial
             playhead = 0
+            detailFollowsPlayhead = true
             isCropMode = false
             undoManager?.removeAllActions()
             livePreview.reset()
@@ -179,6 +186,7 @@ final class EditorModel {
         }
         guard next != current else { return }
         state = next
+        followSelection(ifMovedFrom: current)
         registerUndo(restoring: current, actionName: actionName)
         didCommit(from: current)
     }
@@ -189,9 +197,12 @@ final class EditorModel {
     }
 
     func interact(_ change: (inout EditState) -> EditNotice?) {
-        guard var next = state else { return }
+        guard let current = state else { return }
+        var next = current
         if let notice = change(&next) { interactionNotice = notice }
-        if next != state { state = next }
+        guard next != current else { return }
+        state = next
+        followSelection(ifMovedFrom: current)
     }
 
     func endInteraction(_ actionName: String) {
@@ -217,6 +228,7 @@ final class EditorModel {
     private func restore(_ snapshot: EditState, actionName: String) {
         guard let current = state else { return }
         state = snapshot
+        followSelection(ifMovedFrom: current)
         registerUndo(restoring: current, actionName: actionName)
         didCommit(from: current)
     }
@@ -355,12 +367,18 @@ final class EditorModel {
     func scrub(to time: Double) {
         guard let state else { return }
         playhead = min(max(time, 0), state.source.duration)
+        followPlayhead()
         playback.show(sourceTime: playhead)
     }
 
-    /// Shows a frame during a drag without moving the playhead, such as the edge being trimmed.
-    func preview(sourceTime time: Double) {
-        playback.show(sourceTime: time)
+    private func followPlayhead() {
+        if !detailFollowsPlayhead { detailFollowsPlayhead = true }
+    }
+
+    private func followSelection(ifMovedFrom previous: EditState) {
+        guard detailFollowsPlayhead, let state,
+              state.selectionStart != previous.selectionStart || state.selectionEnd != previous.selectionEnd else { return }
+        detailFollowsPlayhead = false
     }
 
     func togglePlayback() {
