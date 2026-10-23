@@ -121,7 +121,7 @@ xcodebuild -project Still.xcodeproj -scheme Still -derivedDataPath build/Derived
 Scripts/package.sh --dmg
 ```
 
-This builds a universal Release copy, signs it, and writes a zip and a DMG to `build/dist/`. Add `--notarize` with `SIGN_IDENTITY="Developer ID Application"` and notarization credentials to produce a build anyone can open. The script's header lists the variables.
+This builds a universal Release copy, signs it, and writes a zip and a DMG to `build/dist/`. The first `--dmg` run installs [dmgbuild](https://github.com/dmgbuild/dmgbuild) with `python3` into `build/dmgbuild`; it lays out the DMG window. Add `--notarize` with `SIGN_IDENTITY="Developer ID Application"` and notarization credentials to produce a build anyone can open. The script's header lists the variables.
 
 ## Testing
 

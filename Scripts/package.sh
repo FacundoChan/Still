@@ -16,7 +16,8 @@
 #   NOTARY_REQUIRED    "false" keeps a signed but unnotarized build when Apple is still processing
 #                      at the timeout; a rejection always fails (default true)
 #
-# Output: build/dist/Still-<version>.zip, and Still-<version>.dmg with --dmg.
+# Output: build/dist/Still-<version>-<build>.zip, and a .dmg with --dmg. Its window layout comes from
+# Scripts/dmg-settings.py and Scripts/dmg-background.swift.
 
 set -euo pipefail
 cd "${0:A:h}/.."
@@ -111,12 +112,22 @@ if $notarize; then
 fi
 
 if $make_dmg; then
-    staging=$(mktemp -d)
-    ditto $app $staging/Still.app
-    ln -s /Applications $staging/Applications
+    # dmgbuild lays out the window (background, icon positions) without scripting Finder, so it also
+    # works on CI. It lives in its own environment under build/.
+    dmgbuild=build/dmgbuild/bin/dmgbuild
+    if [[ ! -x $dmgbuild ]]; then
+        python3 -m venv build/dmgbuild
+        build/dmgbuild/bin/pip install --quiet --disable-pip-version-check dmgbuild==1.6.7
+    fi
+    artwork=$(mktemp -d)
+    swift Scripts/dmg-background.swift $artwork/background.png 1
+    swift Scripts/dmg-background.swift $artwork/background@2x.png 2
+    tiffutil -cathidpicheck $artwork/background.png $artwork/background@2x.png -out $artwork/background.tiff 2>/dev/null
     dmg=$dist/$name.dmg
-    hdiutil create -volname Still -srcfolder $staging -ov -format UDZO -fs APFS $dmg >/dev/null
-    rm -rf $staging
+    $dmgbuild -s Scripts/dmg-settings.py -D app=$app -D background=$artwork/background.tiff \
+        -D volume_icon=$app/Contents/Resources/AppIcon.icns Still $dmg 2>&1 | grep -v "is deprecated" || true
+    [[ -f $dmg ]] || { print -u2 "dmgbuild didn't create $dmg"; exit 1; }
+    rm -rf $artwork
     if [[ $identity != "-" ]]; then
         # Sign with the certificate the app carries: a name like "Apple Development" can match several.
         certs=$(mktemp -d)
