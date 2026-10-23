@@ -180,7 +180,7 @@ open build/DerivedData/Build/Products/Debug/Still.app --args -StillSimulateFailu
 2. runs the test suite;
 3. packages a universal build, and uploads it as an artifact.
 
-Tags named `v*` also create a draft release with the DMG.
+Tags named `v*` are also notarized and create a draft release with the DMG. To get a notarized build without tagging, run the workflow by hand from the Actions tab. Other builds are signed but not notarized, so another Mac opens them only after you allow them in System Settings › Privacy & Security.
 
 Signing and notarization switch on when these repository secrets exist. Until then, builds are signed ad hoc:
 

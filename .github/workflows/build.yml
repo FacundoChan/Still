@@ -1,8 +1,8 @@
 name: Build
 
-# Every push and pull request is built and tested. Packaging always produces a downloadable build; it is
-# signed with Developer ID and notarized once the signing secrets exist (see README, "Continuous
-# integration"). Tags named v* also publish a draft release with the DMG.
+# Every push and pull request is built and tested. Packaging always produces a downloadable build, signed
+# with Developer ID once the signing secrets exist (see README, "Continuous integration"). Tags named v*
+# and manual runs are also notarized, and tags publish a draft release with the DMG.
 on:
   push:
   pull_request:
@@ -28,6 +28,8 @@ jobs:
     env:
       HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12_BASE64 != '' }}
       HAS_NOTARY: ${{ secrets.NOTARY_KEY_P8_BASE64 != '' }}
+      # Only releases need notarizing, and skipping it keeps every other run a few minutes shorter.
+      NOTARIZE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -90,7 +92,7 @@ jobs:
           security find-identity -v -p codesigning "$keychain"
 
       - name: Prepare notarization key
-        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARY == 'true'
+        if: env.HAS_SIGNING == 'true' && env.HAS_NOTARY == 'true' && env.NOTARIZE == 'true'
         env:
           KEY_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
         run: |
@@ -102,15 +104,14 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
-          # Releases must be notarized. Other builds stay signed if Apple is slow, which happens most
-          # with a team's first submissions.
+          # Releases must be notarized. A manual run stays signed if Apple is slow.
           NOTARY_REQUIRED: ${{ startsWith(github.ref, 'refs/tags/v') }}
           NOTARY_TIMEOUT: ${{ startsWith(github.ref, 'refs/tags/v') && '60m' || '15m' }}
         run: |
           args=(--dmg)
           if [[ "$HAS_SIGNING" == true ]]; then
             export SIGN_IDENTITY="Developer ID Application"
-            [[ "$HAS_NOTARY" == true ]] && args+=(--notarize)
+            [[ "$HAS_NOTARY" == true && "$NOTARIZE" == true ]] && args+=(--notarize)
           else
             # Without the certificate, still prove the Release build works; the result runs only after
             # the user approves it in System Settings.
