@@ -38,9 +38,7 @@
 
 ## Download
 
-Tagged versions are published under [Releases](https://github.com/FacundoChan/Still/releases) as signed, notarized DMGs: open the DMG and drag **Still** to Applications. Every CI run also attaches a build to its summary page.
-
-There's no release yet, so for now [build it from source](#building-from-source). It takes about a minute.
+Download the latest DMG from [Releases](https://github.com/FacundoChan/Still/releases), open it, and drag **Still** to Applications. Releases are signed with Developer ID and notarized by Apple. Every CI run also attaches a build to its summary page.
 
 ## Using Still
 
