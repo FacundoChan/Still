@@ -400,8 +400,8 @@ final class EditorModel {
     func togglePlayback() {
         guard let state else { return }
         if playback.isPlaying {
+            // Pausing reports the frame on screen as the playhead and keeps it there.
             playback.pause()
-            playback.show(sourceTime: playhead)
         } else if state.isInsideSelection(playhead) {
             // From the end of the selection, start over.
             let start = playhead >= state.keyPhotoRange.upperBound ? state.selectionStart : playhead

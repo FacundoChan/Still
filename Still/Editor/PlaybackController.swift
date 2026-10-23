@@ -22,6 +22,10 @@ final class PlaybackController {
     @ObservationIgnored private var hasSelectionItem = false
     @ObservationIgnored private var timeObservers: [(AVPlayer, Any)] = []
     @ObservationIgnored private var endObservers: [NSObjectProtocol] = []
+    /// Counts source seeks, so only the latest one's completion acts.
+    @ObservationIgnored private var seekGeneration = 0
+    /// Set after pausing the selection: show the source player once it has reached the paused frame.
+    @ObservationIgnored private var revealsSourceAfterSeek = false
 
     init() {
         sourcePlayer.actionAtItemEnd = .pause
@@ -65,11 +69,14 @@ final class PlaybackController {
     /// Shows the source frame at `time`, paused.
     func show(sourceTime time: Double) {
         pause()
+        revealsSourceAfterSeek = false
         seekSource(to: time)
+        showsSelectionPlayer = false
     }
 
     func playSource(from time: Double) {
         pause()
+        revealsSourceAfterSeek = false
         seekSource(to: time)
         showsSelectionPlayer = false
         isPlaying = true
@@ -80,6 +87,7 @@ final class PlaybackController {
     func playSelection(fromSourceTime sourceTime: Double) {
         guard hasSelectionItem else { return playSource(from: sourceTime) }
         pause()
+        revealsSourceAfterSeek = false
         let outputTime = max(0, (sourceTime - selectionStart) / selectionSpeed)
         selectionPlayer.seek(to: CMTime(seconds: outputTime, preferredTimescale: 60_000), toleranceBefore: .zero, toleranceAfter: .zero)
         showsSelectionPlayer = true
@@ -87,12 +95,33 @@ final class PlaybackController {
         selectionPlayer.play()
     }
 
-    /// Stops playback and returns to the source player.
+    /// Stops playback where it is and reports that exact moment through `onPlaybackTime`.
+    ///
+    /// Paused in the selection, the frame on screen stays: the selection player keeps showing it until the
+    /// source player, which scrubbing uses, has sought to the same frame. Switching at once showed the
+    /// source player's older frame for a moment.
     func pause() {
+        guard isPlaying else { return }
         sourcePlayer.pause()
         selectionPlayer.pause()
         isPlaying = false
-        showsSelectionPlayer = false
+        guard showsSelectionPlayer else {
+            onPlaybackTime?(sourcePlayer.currentTime().seconds)
+            return
+        }
+        let time = shownSelectionSourceTime()
+        onPlaybackTime?(time)
+        revealsSourceAfterSeek = true
+        seekSource(to: time)
+    }
+
+    /// The source time of the selection frame on screen. The composition renders on a fixed output grid, and
+    /// the frame shown is the last one at or before the current time.
+    private func shownSelectionSourceTime() -> Double {
+        let output = selectionPlayer.currentTime().seconds
+        let frame = selectionPlayer.currentItem?.videoComposition?.frameDuration.seconds ?? 0
+        let snapped = frame > 0 ? (output / frame + 1e-6).rounded(.down) * frame : output
+        return selectionStart + max(snapped, 0) * selectionSpeed
     }
 
     /// Releases both items and observers once the window closes.
@@ -110,6 +139,7 @@ final class PlaybackController {
     /// Steps the source player by whole source frames, which also handles variable frame rates.
     func stepSource(by count: Int) {
         pause()
+        showsSelectionPlayer = false
         sourcePlayer.currentItem?.step(byCount: count)
     }
 
@@ -120,7 +150,18 @@ final class PlaybackController {
     // MARK: - Observation
 
     private func seekSource(to time: Double) {
-        sourcePlayer.seek(to: CMTime(seconds: time, preferredTimescale: 60_000), toleranceBefore: .zero, toleranceAfter: .zero)
+        seekGeneration += 1
+        let generation = seekGeneration
+        sourcePlayer.seek(to: CMTime(seconds: time, preferredTimescale: 60_000), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard finished else { return }
+            Task { @MainActor [weak self] in self?.sourceSeekFinished(generation) }
+        }
+    }
+
+    private func sourceSeekFinished(_ generation: Int) {
+        guard generation == seekGeneration, revealsSourceAfterSeek, !isPlaying else { return }
+        revealsSourceAfterSeek = false
+        showsSelectionPlayer = false
     }
 
     private func playerTimeChanged(_ player: AVPlayer, time: CMTime) {
