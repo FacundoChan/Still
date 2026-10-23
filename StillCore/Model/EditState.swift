@@ -214,6 +214,11 @@ public struct EditState: Sendable, Equatable {
     /// footage leaves most of it unused, more so at higher bit rates and sizes. The JPEG's size varies with
     /// detail too.
     public func estimatedFileSize(calibration: SizeCalibration?) -> Int64 {
+        estimatedSizes(calibration: calibration).total
+    }
+
+    /// The estimate in its two parts: the Key Photo and the movie with its sound.
+    public func estimatedSizes(calibration: SizeCalibration?) -> SizeEstimate {
         let size = outputGeometry.renderSize
         let pixels = Double(size.width * size.height)
         var videoBits = Double(output.averageVideoBitRate(for: size)) * outputDuration
@@ -226,7 +231,7 @@ public struct EditState: Sendable, Equatable {
             jpegBytes = calibration.photoBytesPerPixel * calibration.pixelCount * pow(ratio, SizeCalibration.photoExponent)
         }
         let audioBits = includesAudio ? 128_000 * outputDuration : 0
-        return Int64((videoBits + audioBits) / 8 + jpegBytes)
+        return SizeEstimate(photo: Int64(jpegBytes), video: Int64((videoBits + audioBits) / 8))
     }
 
     public func isSpeedAvailable(_ candidate: Double) -> Bool {
@@ -481,4 +486,14 @@ public struct SizeCalibration: Sendable, Equatable {
 
     /// JPEG bytes grow with about the 0.8th power of the pixel count, for the same reason.
     static let photoExponent = 0.8
+}
+
+/// About how many bytes each file of a Live Photo takes.
+public struct SizeEstimate: Sendable, Equatable {
+    /// The Key Photo JPEG. Photos' info panel shows only this part.
+    public var photo: Int64
+    /// The paired movie, sound included.
+    public var video: Int64
+
+    public var total: Int64 { photo + video }
 }

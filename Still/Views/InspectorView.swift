@@ -2,8 +2,8 @@ import AppKit
 import StillCore
 import SwiftUI
 
-/// Two tabs: Edit (speed, duration, crop, sound, Key Photo) for shaping the moment, and Output (resolution, bit
-/// rate, HDR, location, and the summary) for what is saved.
+/// Two tabs: Edit (speed, duration, crop, Key Photo) for shaping the moment, and Output (resolution, bit rate,
+/// HDR, sound, location, and the estimated size) for what is saved.
 struct InspectorView: View {
     @Bindable var model: EditorModel
     @AppStorage("InspectorTab") private var tab = InspectorTab.edit
@@ -35,7 +35,6 @@ struct InspectorView: View {
                         speedSection(state)
                         durationSection(state)
                         cropSection(state)
-                        soundSection(state)
                         keyPhotoSection(state)
                     case .output:
                         outputSection(state)
@@ -201,19 +200,19 @@ struct InspectorView: View {
 
     // MARK: - Sound
 
-    private func soundSection(_ state: EditState) -> some View {
-        Section("Sound") {
-            Toggle("Sound", isOn: Binding(
-                get: { state.includesAudio },
-                set: { model.setIncludesAudio($0) }
-            ))
-            .toggleStyle(.switch)
-            .disabled(!state.canIncludeAudio)
-            if !state.canIncludeAudio {
-                Text("This video has no sound.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+    @ViewBuilder
+    private func soundRows(_ state: EditState) -> some View {
+        Toggle("Sound", isOn: Binding(
+            get: { state.includesAudio },
+            set: { model.setIncludesAudio($0) }
+        ))
+        .toggleStyle(.switch)
+        .disabled(!state.canIncludeAudio)
+        .help("Keep the video's sound in the Live Photo")
+        if !state.canIncludeAudio {
+            Text("This video has no sound.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -260,6 +259,7 @@ struct InspectorView: View {
 
     // MARK: - Output
 
+    @ViewBuilder
     private func outputSection(_ state: EditState) -> some View {
         Section("Output") {
             LabeledContent("Resolution") {
@@ -304,20 +304,53 @@ struct InspectorView: View {
                 .toggleStyle(.switch)
                 .help("Keep the video's high dynamic range in the photo and the video. Off gives standard color, which looks the same on every screen.")
             }
+            soundRows(state)
             let size = state.outputGeometry.renderSize
-            Text("\(Int(size.width)) × \(Int(size.height)) · \(TimeFormat.seconds(state.outputDuration))")
-                .monospacedDigit()
-            Text("\(state.output.frameRate) fps · \(Self.megabits(state.output.averageVideoBitRate(for: size)))\(state.isHDR ? " · HDR" : "") · Sound \(state.includesAudio ? "on" : "off")")
-                .foregroundStyle(.secondary)
-            Text("About \(ByteCountFormatter.string(fromByteCount: state.estimatedFileSize(calibration: model.livePreview.sizeCalibration), countStyle: .file))")
-                .foregroundStyle(.secondary)
-                .help("Estimated size of the Live Photo's photo and video")
+            HStack {
+                Label("\(Int(size.width)) × \(Int(size.height))", systemImage: "aspectratio")
+                    .help("Size of the photo and the video, in pixels")
+                Spacer()
+                Label(TimeFormat.seconds(state.outputDuration), systemImage: "timer")
+                    .help("Length of the Live Photo")
+            }
+            .monospacedDigit()
+            HStack {
+                Label("\(state.output.frameRate) fps", systemImage: "film")
+                    .help("Frames per second of the video")
+                Spacer()
+                Label(Self.megabits(state.output.averageVideoBitRate(for: size)), systemImage: "speedometer")
+                    .help("The video's bit rate")
+            }
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
             if state.isLowResolution {
                 Label("Low resolution", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             }
             exportIssueRows(state)
         }
+        Section("Estimated Size") {
+            let sizes = state.estimatedSizes(calibration: model.livePreview.sizeCalibration)
+            LabeledContent {
+                Text("~\(Self.bytes(sizes.photo))")
+            } label: {
+                Label("Photo", systemImage: "photo")
+            }
+            .help("The Key Photo. Photos' info panel shows only this part's size.")
+            LabeledContent {
+                Text("~\(Self.bytes(sizes.video))")
+            } label: {
+                Label("Video", systemImage: "video")
+            }
+            .help("The Live Photo's motion, with its sound")
+            LabeledContent {
+                Text("~\(Self.bytes(sizes.total))").fontWeight(.semibold)
+            } label: {
+                Label("Total", systemImage: "sum")
+            }
+            .help("Estimated from how this video encodes in the Live Photo preview")
+        }
+        .monospacedDigit()
     }
 
     // MARK: - Location
@@ -366,6 +399,10 @@ struct InspectorView: View {
                     isLocationPickerPresented = false
                 }
             }
+    }
+
+    private static func bytes(_ count: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
     /// “16.6 Mbit/s”, or whole numbers from 100 Mbit/s.

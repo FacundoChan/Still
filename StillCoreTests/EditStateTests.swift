@@ -205,6 +205,8 @@ struct EditStateTests {
         // 1080 × 1920 at 30 fps and 0.25 bpp for 3 s: 5.83 MB of video, 48 kB of sound, and about 0.73 MB of JPEG.
         var state = try EditState(source: source(10, size: CGSize(width: 1080, height: 1920)))
         #expect(abs(Double(state.estimatedFileSize) - 6_605_760) < 1)
+        let parts = state.estimatedSizes(calibration: nil)
+        #expect(parts.photo == 725_760 && parts.video == 5_880_000 && parts.total == state.estimatedFileSize)
         state.setIncludesAudio(false)
         #expect(abs(Double(state.estimatedFileSize) - 6_557_760) < 1)
         try state.setSpeed(0.5)
