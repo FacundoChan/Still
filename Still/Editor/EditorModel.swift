@@ -503,8 +503,8 @@ final class EditorModel {
 
     // MARK: - Previews
 
-    /// The stage's longer edge in pixels, which the stage players render at: sharp on the screen, never above the
-    /// output, and no larger than the window needs. Rounded up to 256-pixel steps, so resizing the window rebuilds
+    /// The stage's longer edge in pixels, which the stage players and the LIVE preview render at: sharp on the
+    /// screen, never above the output, and no larger than the window needs. Rounded up to 256-pixel steps, so resizing the window rebuilds
     /// the players only now and then.
     @ObservationIgnored private var stageLongEdge = OutputResolution.fullHD.maxLongEdge
     @ObservationIgnored private var stageResizeTask: Task<Void, Never>?
@@ -519,7 +519,7 @@ final class EditorModel {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled, let self else { return }
             self.refreshSourcePreview()
-            self.scheduleSelectionPreview()
+            self.scheduleRenders()
         }
     }
 
@@ -547,7 +547,7 @@ final class EditorModel {
     /// Rebuilds the selection player and the Live Photo preview once edits settle.
     private func scheduleRenders(includingSelection: Bool = true) {
         guard let source, let state else { return }
-        livePreview.schedule(state.plan, source: source)
+        livePreview.schedule(state.plan, source: source, longEdge: stageLongEdge)
         if includingSelection { scheduleSelectionPreview() }
     }
 

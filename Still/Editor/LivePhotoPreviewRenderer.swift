@@ -3,13 +3,11 @@ import Observation
 import Photos
 import StillCore
 
-/// Renders a reduced-size Live Photo in the background once edits settle, for the LIVE preview and the
-/// inspector’s Key Photo. It uses the export pipeline, so the Key Photo
-/// shown is the one that will be saved.
+/// Renders the Live Photo in the background once edits settle, for the LIVE preview and the inspector's Key
+/// Photo. It uses the export pipeline, so the Key Photo shown is the one that will be saved. It renders at the
+/// size the stage shows it, so the LIVE preview is sharp on screen.
 @Observable
 final class LivePhotoPreviewRenderer {
-    static let longEdge = 720
-
     private(set) var isRendering = false
     private(set) var livePhoto: PHLivePhoto?
     private(set) var keyPhoto: NSImage?
@@ -29,8 +27,9 @@ final class LivePhotoPreviewRenderer {
         renderedPlan == plan
     }
 
-    /// Renders `plan` after `delay`, replacing any render still waiting or running.
-    func schedule(_ plan: EditPlan, source: SourceMedia, delay: Duration = .milliseconds(600)) {
+    /// Renders `plan` after `delay` with its longer edge at most `longEdge` pixels, replacing any render still
+    /// waiting or running.
+    func schedule(_ plan: EditPlan, source: SourceMedia, longEdge: Int, delay: Duration = .milliseconds(600)) {
         task?.cancel()
         guard plan.issue(sourceDuration: source.duration) == nil else {
             isRendering = false
@@ -40,7 +39,7 @@ final class LivePhotoPreviewRenderer {
         task = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
-            await self?.render(plan, source: source)
+            await self?.render(plan, source: source, longEdge: longEdge)
         }
     }
 
@@ -69,9 +68,9 @@ final class LivePhotoPreviewRenderer {
         removeDirectory()
     }
 
-    private func render(_ plan: EditPlan, source: SourceMedia) async {
+    private func render(_ plan: EditPlan, source: SourceMedia, longEdge: Int) async {
         var reduced = plan
-        reduced.output.maxLongEdge = Self.longEdge
+        reduced.output.maxLongEdge = min(plan.output.maxLongEdge, longEdge)
         let directory = TemporaryFiles.previews.appending(path: UUID().uuidString)
         do {
             let pair = try await LivePhotoExporter().export(reduced, source: source, to: directory, baseName: "Preview")
