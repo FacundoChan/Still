@@ -32,6 +32,11 @@ make landscape-sdr-30fps-6s.mov \
   -f lavfi -i "testsrc=size=1920x1080:rate=30:duration=6" -f lavfi -i "$(tone 440 6)" \
   "${X264[@]}" "${AAC[@]}" -shortest
 
+# 4K, for the 4K output resolution.
+make uhd-landscape-30fps-4s.mov \
+  -f lavfi -i "testsrc=size=3840x2160:rate=30:duration=4" -f lavfi -i "$(tone 440 4)" \
+  "${X264[@]}" "${AAC[@]}" -shortest
+
 make silent-landscape-30fps-4s.mov \
   -f lavfi -i "testsrc=size=1920x1080:rate=30:duration=4" \
   "${X264[@]}" -an

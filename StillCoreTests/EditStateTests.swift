@@ -211,6 +211,48 @@ struct EditStateTests {
         #expect(state.estimatedFileSize > 12_000_000, "Twice the length is about twice the video")
     }
 
+    @Test func resolutionCapsTheLongerEdgeWithoutUpscaling() throws {
+        var state = try EditState(source: source(10, size: CGSize(width: 2160, height: 3840)))
+        #expect(state.resolution == .fullHD && state.bitRate == .standard, "1080p at the standard bit rate by default")
+        #expect(state.outputGeometry.renderSize == CGSize(width: 1080, height: 1920))
+
+        state.setResolution(.uhd)
+        #expect(state.outputGeometry.renderSize == CGSize(width: 2160, height: 3840))
+        state.setResolution(.hd)
+        #expect(state.outputGeometry.renderSize == CGSize(width: 720, height: 1280))
+        #expect(OutputResolution.allCases.allSatisfy(state.isResolutionAvailable))
+
+        // A square crop of three quarters of the width is 1620 pixels, so 4K would give the same size as 1080p.
+        state.setResolution(.fullHD)
+        try state.setCropAspect(.ratio(width: 1, height: 1))
+        state.setCropRect(CGRect(x: 0.125, y: 0.3, width: 0.75, height: 0.75 * 2160 / 3840))
+        #expect(state.renderSize(at: .uhd) == CGSize(width: 1620, height: 1620))
+        #expect(state.renderSize(at: .hd) == CGSize(width: 1280, height: 1280))
+        #expect(!state.isResolutionAvailable(.uhd))
+        #expect(state.isResolutionAvailable(.fullHD) && state.isResolutionAvailable(.hd))
+    }
+
+    @Test func currentResolutionStaysAvailable() throws {
+        var state = try EditState(source: source(10))
+        #expect(!state.isResolutionAvailable(.uhd), "A 1080p video can't get larger")
+        state.setResolution(.uhd)
+        #expect(state.isResolutionAvailable(.uhd))
+        #expect(state.outputGeometry.renderSize == CGSize(width: 1920, height: 1080))
+    }
+
+    @Test func bitRateScalesTheVideoAndTheEstimate() throws {
+        var state = try EditState(source: source(10, size: CGSize(width: 1080, height: 1920)))
+        // 1080 × 1920 pixels × 30 fps × 0.25 bpp.
+        #expect(state.videoBitRate(at: .standard) == 15_552_000)
+        #expect(state.videoBitRate(at: .high) == 24_883_200)
+        let standard = state.estimatedFileSize
+        state.setBitRate(.veryHigh)
+        #expect(state.plan.output.bitsPerPixel == 0.6)
+        #expect(state.estimatedFileSize > standard)
+        state.setBitRate(.low)
+        #expect(state.estimatedFileSize < standard)
+    }
+
     @Test func keyPhotoClampsToLastRenderedFrame() throws {
         var state = try EditState(source: source(20))
         state.setKeyPhoto(at: 3)

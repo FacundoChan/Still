@@ -64,7 +64,7 @@ public struct EditState: Sendable, Equatable {
     private static let tolerance = 1e-6
 
     public let source: SourceInfo
-    public let output: OutputSettings
+    public private(set) var output: OutputSettings
     public private(set) var selectionStart: Double
     public private(set) var selectionEnd: Double
     public private(set) var speed: Double
@@ -143,6 +143,32 @@ public struct EditState: Sendable, Equatable {
         OutputGeometry(orientedSize: source.orientedSize, crop: cropRect, maxLongEdge: output.maxLongEdge)
     }
 
+    /// The output size `resolution` would give with the current crop.
+    public func renderSize(at resolution: OutputResolution) -> CGSize {
+        OutputGeometry(orientedSize: source.orientedSize, crop: cropRect, maxLongEdge: resolution.maxLongEdge).renderSize
+    }
+
+    /// The current resolution choice; nil when the output settings use a size outside the choices.
+    public var resolution: OutputResolution? { OutputResolution(maxLongEdge: output.maxLongEdge) }
+
+    /// The current bit rate choice; nil when the output settings use a rate outside the choices.
+    public var bitRate: VideoBitRate? { VideoBitRate(bitsPerPixel: output.bitsPerPixel) }
+
+    /// A resolution is unavailable when it gives the same size as a smaller one, because the crop isn't larger.
+    /// The current one always stays available, so the menu never disables its own selection.
+    public func isResolutionAvailable(_ candidate: OutputResolution) -> Bool {
+        guard candidate != resolution else { return true }
+        let size = renderSize(at: candidate)
+        return !OutputResolution.allCases.contains { $0.maxLongEdge < candidate.maxLongEdge && renderSize(at: $0) == size }
+    }
+
+    /// The video's average bit rate, in bits per second, at `bitRate` and the current size.
+    public func videoBitRate(at bitRate: VideoBitRate) -> Int {
+        var settings = output
+        settings.bitsPerPixel = bitRate.bitsPerPixel
+        return settings.averageVideoBitRate(for: outputGeometry.renderSize)
+    }
+
     public var isLowResolution: Bool {
         let size = outputGeometry.renderSize
         return max(size.width, size.height) < Self.lowResolutionLongEdge
@@ -164,7 +190,7 @@ public struct EditState: Sendable, Equatable {
     public var estimatedFileSize: Int64 {
         let size = outputGeometry.renderSize
         let pixels = Double(size.width * size.height)
-        let videoBits = pixels * Double(output.frameRate) * output.bitsPerPixel * outputDuration
+        let videoBits = Double(output.averageVideoBitRate(for: size)) * outputDuration
         let audioBits = includesAudio ? 128_000 * outputDuration : 0
         // JPEG at quality 0.92 averages about a third of a byte per pixel on camera footage.
         let jpegBytes = pixels * 0.35
@@ -303,6 +329,16 @@ public struct EditState: Sendable, Equatable {
     /// Ignored for sources without audio.
     public mutating func setIncludesAudio(_ include: Bool) {
         includesAudio = include && source.hasAudio
+    }
+
+    // MARK: - Output
+
+    public mutating func setResolution(_ resolution: OutputResolution) {
+        output.maxLongEdge = resolution.maxLongEdge
+    }
+
+    public mutating func setBitRate(_ bitRate: VideoBitRate) {
+        output.bitsPerPixel = bitRate.bitsPerPixel
     }
 
     // MARK: - Crop

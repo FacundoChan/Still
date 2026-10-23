@@ -316,9 +316,8 @@ final class MovieRenderSession: @unchecked Sendable {
 
     private static func videoSettings(for size: CGSize, output: OutputSettings) -> [String: Any] {
         let frameRate = Int(output.frameRate)
-        let pixelsPerSecond = size.width * size.height * Double(frameRate)
         var compression: [String: Any] = [
-            AVVideoAverageBitRateKey: Int(pixelsPerSecond * output.bitsPerPixel),
+            AVVideoAverageBitRateKey: output.averageVideoBitRate(for: size),
             AVVideoExpectedSourceFrameRateKey: frameRate,
             AVVideoMaxKeyFrameIntervalKey: frameRate,
         ]

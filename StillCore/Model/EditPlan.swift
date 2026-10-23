@@ -2,7 +2,8 @@ import CoreGraphics
 import CoreMedia
 import Foundation
 
-/// Fixed properties of every rendered output.
+/// Properties of every rendered output. The resolution and bit rate follow the user's choices; see
+/// `OutputResolution` and `VideoBitRate`.
 public struct OutputSettings: Sendable, Equatable {
     public enum VideoCodec: Sendable, Equatable {
         case h264
@@ -16,7 +17,7 @@ public struct OutputSettings: Sendable, Equatable {
     public var durationRange: ClosedRange<Double>
     /// HEVC, as iPhone uses for its own Live Photos; at the same size it keeps more detail than H.264.
     public var videoCodec: VideoCodec
-    /// Average encoded bits per pixel per frame. 0.25 is about 16.6 Mbit/s at 1080 × 1920, 30 fps, and keeps
+    /// Average encoded bits per pixel per frame. 0.25 is about 15.6 Mbit/s at 1080 × 1920, 30 fps, and keeps
     /// about 90% of the fine detail of a 4K iPhone clip.
     public var bitsPerPixel: Double
     /// Encoder quality from 0 to 1, where the encoder supports it; nil leaves rate control to the bitrate.
@@ -39,6 +40,72 @@ public struct OutputSettings: Sendable, Equatable {
     }
 
     public static let standard = OutputSettings()
+
+    /// The video's average bit rate, in bits per second, at `size`.
+    public func averageVideoBitRate(for size: CGSize) -> Int {
+        Int(size.width * size.height * Double(frameRate) * bitsPerPixel)
+    }
+}
+
+/// The output resolution the user picks: a cap on the longer edge. Smaller videos and crops are never
+/// upscaled, so a choice above the crop's size gives the crop's own size.
+public enum OutputResolution: String, CaseIterable, Sendable {
+    case uhd
+    case fullHD
+    case hd
+
+    public var maxLongEdge: Int {
+        switch self {
+        case .uhd: 3840
+        case .fullHD: 1920
+        case .hd: 1280
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .uhd: "4K"
+        case .fullHD: "1080p"
+        case .hd: "720p"
+        }
+    }
+
+    init?(maxLongEdge: Int) {
+        guard let match = Self.allCases.first(where: { $0.maxLongEdge == maxLongEdge }) else { return nil }
+        self = match
+    }
+}
+
+/// The video bit rate the user picks, as bits per pixel per frame, so the quality stays the same at every
+/// resolution. Standard keeps about 90% of the fine detail of a 4K iPhone clip and High about 94%.
+public enum VideoBitRate: String, CaseIterable, Sendable {
+    case low
+    case standard
+    case high
+    case veryHigh
+
+    public var bitsPerPixel: Double {
+        switch self {
+        case .low: 0.15
+        case .standard: 0.25
+        case .high: 0.4
+        case .veryHigh: 0.6
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .low: "Low"
+        case .standard: "Standard"
+        case .high: "High"
+        case .veryHigh: "Very High"
+        }
+    }
+
+    init?(bitsPerPixel: Double) {
+        guard let match = Self.allCases.first(where: { abs($0.bitsPerPixel - bitsPerPixel) < 1e-9 }) else { return nil }
+        self = match
+    }
 }
 
 /// The editing intent that preview and export both derive from.

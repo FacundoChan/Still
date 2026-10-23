@@ -40,6 +40,46 @@ struct LivePhotoExportTests {
         #expect(pairing == .paired)
     }
 
+    /// At 4K and a high bit rate the photo and the video are 4K, and Photos still pairs them.
+    @Test(arguments: Fixture.uhd.filter(\.isAvailable))
+    func exportsAt4K(_ fixture: Fixture) async throws {
+        let source = try await SourceMedia.load(fixture.url)
+        var plan = EditPlan.centered(start: fixture.selectionStart, duration: 3)
+        plan.output.maxLongEdge = OutputResolution.uhd.maxLongEdge
+        plan.output.bitsPerPixel = VideoBitRate.high.bitsPerPixel
+
+        let directory = Fixture.outputDirectory(for: "4K-" + fixture.name)
+        try? FileManager.default.removeItem(at: directory)
+        let pair = try await LivePhotoExporter().export(plan, source: source, to: directory, baseName: "LivePhoto")
+
+        let inspection = try await LivePhotoInspector.inspect(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(inspection.videoPixelSize == fixture.expectedSize)
+        #expect(inspection.imagePixelSize == fixture.expectedSize)
+        #expect(inspection.identifiersMatch)
+        let pairing = await LivePhotoInspector.checkPairing(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(pairing == .paired)
+    }
+
+    /// 720p gives a 720p pair, and the bit rate reaches the encoder: Very High makes a larger movie than Low.
+    @Test func resolutionAndBitRateReachTheExport() async throws {
+        let fixture = try #require(Fixture.goalA.first { $0.name == "landscape-sdr-30fps-6s.mov" })
+        let source = try await SourceMedia.load(fixture.url)
+        var movieSizes: [VideoBitRate: Int] = [:]
+        for bitRate in [VideoBitRate.low, .veryHigh] {
+            var plan = EditPlan.centered(start: fixture.selectionStart, duration: 3)
+            plan.output.maxLongEdge = OutputResolution.hd.maxLongEdge
+            plan.output.bitsPerPixel = bitRate.bitsPerPixel
+            let directory = Fixture.outputDirectory(for: "720p-\(bitRate.rawValue)")
+            try? FileManager.default.removeItem(at: directory)
+            let pair = try await LivePhotoExporter().export(plan, source: source, to: directory, baseName: "LivePhoto")
+            #expect(pair.pixelSize == CGSize(width: 1280, height: 720))
+            movieSizes[bitRate] = try FileManager.default.attributesOfItem(atPath: pair.videoURL.path)[.size] as? Int
+        }
+        let low = try #require(movieSizes[.low]), veryHigh = try #require(movieSizes[.veryHigh])
+        print("MEASURE 720p movie: low \(low) bytes, very high \(veryHigh) bytes")
+        #expect(Double(veryHigh) > Double(low) * 1.5)
+    }
+
     /// Negative control: the pairing check must reject an image and movie whose identifiers differ,
     /// otherwise a passing check proves nothing.
     @Test func pairingCheckRejectsMismatchedIdentifiers() async throws {

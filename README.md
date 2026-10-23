@@ -26,6 +26,7 @@
 - **Make Key Photo, like on iPhone.** Scrub to any frame and click the bubble. If the frame is outside the selection, the selection comes to it.
 - **Trim with brackets.** Yellow brackets trim directly. A two-level timeline lets you place a 3-second clip precisely in a 10-minute video.
 - **Speed without chipmunks.** Play at 0.5×–2× with pitch-preserved, frame-accurate sound. Speed keeps the moment you picked, and Still shows the motion frame rate and estimated file size before you export.
+- **Choose size and quality.** Export at 4K, 1080p or 720p, at a Low to Very High bit rate. Still shows the bit rate and the file size before you save.
 - **Crop to any shape.** Choose a preset (1:1, 4:5, 9:16, …), a custom ratio, or freeform, and reposition with direct handles or exact pixel values.
 - **What you see is what you save.** The preview, the Key Photo, and the export all render through one composition. The LIVE badge plays the actual result in the system Live Photo player.
 - **HDR handled.** iPhone Dolby Vision, HLG, and HDR10 are converted to consistent SDR.

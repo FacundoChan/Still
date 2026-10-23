@@ -119,7 +119,8 @@ final class EditorModel {
         accessedURL = url.startAccessingSecurityScopedResource() ? url : nil
         do {
             let media = try await SourceMedia.load(url)
-            let initial = try EditState(source: media.info)
+            var initial = try EditState(source: media.info)
+            Self.applyRememberedOutput(to: &initial)
             if let previous = source, previous.url != url { TemporaryFiles.removeImportedCopy(previous.url) }
             source = media
             sourceName = url.lastPathComponent
@@ -225,7 +226,11 @@ final class EditorModel {
         if previous.cropRect != state.cropRect && !isCropMode {
             refreshSourcePreview()
         }
-        scheduleRenders()
+        // The stage previews at a fixed size, so a new resolution or bit rate changes only the Live Photo
+        // preview, and playback carries on.
+        var unchanged = previous.plan
+        unchanged.output = state.output
+        scheduleRenders(includingSelection: unchanged != state.plan)
     }
 
     // MARK: - Commands
@@ -296,6 +301,30 @@ final class EditorModel {
     func setIncludesAudio(_ include: Bool) {
         edit(include ? "Turn Sound On" : "Turn Sound Off") { $0.setIncludesAudio(include) }
     }
+
+    func setResolution(_ resolution: OutputResolution) {
+        edit("Change Resolution") { $0.setResolution(resolution) }
+        UserDefaults.standard.set(resolution.rawValue, forKey: Self.resolutionKey)
+    }
+
+    func setBitRate(_ bitRate: VideoBitRate) {
+        edit("Change Bit Rate") { $0.setBitRate(bitRate) }
+        UserDefaults.standard.set(bitRate.rawValue, forKey: Self.bitRateKey)
+    }
+
+    /// New videos start with the resolution and bit rate chosen last.
+    private static func applyRememberedOutput(to state: inout EditState) {
+        let defaults = UserDefaults.standard
+        if let resolution = defaults.string(forKey: resolutionKey).flatMap(OutputResolution.init(rawValue:)) {
+            state.setResolution(resolution)
+        }
+        if let bitRate = defaults.string(forKey: bitRateKey).flatMap(VideoBitRate.init(rawValue:)) {
+            state.setBitRate(bitRate)
+        }
+    }
+
+    private static let resolutionKey = "OutputResolution"
+    private static let bitRateKey = "VideoBitRate"
 
     /// Choosing a ratio enters Crop mode.
     func setCropAspect(_ aspect: CropAspect) {
@@ -427,10 +456,15 @@ final class EditorModel {
 
     // MARK: - Previews
 
+    /// The stage players render at most 1080p, whatever the output resolution. The framing is the same, and
+    /// 4K compositions would play less smoothly for no visible gain in the window.
+    private static let stageLongEdge = OutputResolution.fullHD.maxLongEdge
+
     /// The source player shows the whole clip at 1×: full frame in Crop mode, otherwise the exported crop.
     private func refreshSourcePreview() {
         guard let source, let state else { return }
         var output = state.output
+        output.maxLongEdge = min(output.maxLongEdge, Self.stageLongEdge)
         output.frameRate = Int32(min(120, max(30, state.source.frameRate.rounded())))
         output.durationRange = 0...Double.greatestFiniteMagnitude
         let plan = EditPlan(
@@ -445,11 +479,13 @@ final class EditorModel {
     }
 
     /// Rebuilds the selection player and the Live Photo preview once edits settle.
-    private func scheduleRenders() {
+    private func scheduleRenders(includingSelection: Bool = true) {
         guard let source, let state else { return }
         livePreview.schedule(state.plan, source: source)
+        guard includingSelection else { return }
         selectionPreviewTask?.cancel()
-        let plan = state.plan
+        var plan = state.plan
+        plan.output.maxLongEdge = min(plan.output.maxLongEdge, Self.stageLongEdge)
         selectionPreviewTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }

@@ -2,7 +2,7 @@ import AppKit
 import StillCore
 import SwiftUI
 
-/// Speed, duration, crop, sound, Key Photo, and the output summary.
+/// Speed, duration, crop, sound, Key Photo, and the output settings and summary.
 struct InspectorView: View {
     @Bindable var model: EditorModel
     @State private var isCustomRatioPresented = false
@@ -218,10 +218,44 @@ struct InspectorView: View {
 
     private func outputSection(_ state: EditState) -> some View {
         Section("Output") {
+            LabeledContent("Resolution") {
+                Menu {
+                    ForEach(OutputResolution.allCases, id: \.self) { resolution in
+                        let size = state.renderSize(at: resolution)
+                        Toggle(isOn: Binding(
+                            get: { resolution == state.resolution },
+                            set: { _ in model.setResolution(resolution) }
+                        )) {
+                            Text("\(resolution.title) (\(Int(size.width)) × \(Int(size.height)))")
+                        }
+                        .disabled(!state.isResolutionAvailable(resolution))
+                    }
+                } label: {
+                    Text(state.resolution?.title ?? "Custom")
+                }
+                .fixedSize()
+            }
+            .help("Size of the photo and the video. A video isn't enlarged past its own size.")
+            LabeledContent("Bit rate") {
+                Menu {
+                    ForEach(VideoBitRate.allCases, id: \.self) { bitRate in
+                        Toggle(isOn: Binding(
+                            get: { bitRate == state.bitRate },
+                            set: { _ in model.setBitRate(bitRate) }
+                        )) {
+                            Text("\(bitRate.title) (\(Self.megabits(state.videoBitRate(at: bitRate))))")
+                        }
+                    }
+                } label: {
+                    Text(state.bitRate?.title ?? "Custom")
+                }
+                .fixedSize()
+            }
+            .help("Video quality: a higher bit rate keeps more detail and makes a larger file")
             let size = state.outputGeometry.renderSize
             Text("\(Int(size.width)) × \(Int(size.height)) · \(TimeFormat.seconds(state.outputDuration))")
                 .monospacedDigit()
-            Text("\(state.output.frameRate) fps · Sound \(state.includesAudio ? "on" : "off")")
+            Text("\(state.output.frameRate) fps · \(Self.megabits(state.output.averageVideoBitRate(for: size))) · Sound \(state.includesAudio ? "on" : "off")")
                 .foregroundStyle(.secondary)
             Text("About \(ByteCountFormatter.string(fromByteCount: state.estimatedFileSize, countStyle: .file))")
                 .foregroundStyle(.secondary)
@@ -238,6 +272,12 @@ struct InspectorView: View {
                 }
             }
         }
+    }
+
+    /// “16.6 Mbit/s”, or whole numbers from 100 Mbit/s.
+    private static func megabits(_ bitsPerSecond: Int) -> String {
+        let value = Double(bitsPerSecond) / 1_000_000
+        return value < 100 ? String(format: "%.1f Mbit/s", value) : String(format: "%.0f Mbit/s", value)
     }
 }
 
