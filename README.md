@@ -34,8 +34,8 @@
   - one window per video, full undo and redo, and keyboard shortcuts for every edit;
   - drag and drop from Finder or Photos;
   - light and dark mode, and Liquid Glass on macOS 26.
-- **Keeps when it was taken.** The Live Photo takes the video's date, at the Key Photo's moment, and its camera, so it sorts with that day's photos. The location is copied only if you turn it on.
-- **Private by design.** Photos access is add-only and requested only when you save. Everything is processed on your Mac.
+- **Keeps when and where it was taken.** The Live Photo takes the video's date, at the Key Photo's moment, and its camera, so it sorts with that day's photos. Include the video's location, or choose one on a map, and Photos shows it under Places.
+- **Private by design.** Photos access is add-only and requested only when you save. Your videos are processed on your Mac. Apple Maps is used only to show or find a location you include.
 
 ## Download
 

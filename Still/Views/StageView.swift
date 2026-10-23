@@ -19,8 +19,9 @@ struct EditorContent: View {
         .focused($isFocused)
         .focusEffectDisabled()
         .onKeyPress(phases: [.down, .repeat]) { press in
-            // Keys typed in a Source field belong to it, Return and Space included.
-            guard !(NSApp.keyWindow?.firstResponder is NSText) else { return .ignored }
+            // Keys typed in a Source field belong to it, Return and Space included, and keys typed in a popover
+            // such as the location search belong to the popover, even before its field has focus.
+            guard NSApp.keyWindow === model.window, !(NSApp.keyWindow?.firstResponder is NSText) else { return .ignored }
             return model.handleKey(press) ? .handled : .ignored
         }
         .simultaneousGesture(TapGesture().onEnded {

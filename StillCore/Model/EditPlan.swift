@@ -133,8 +133,8 @@ public struct EditPlan: Sendable, Equatable {
     /// Normalized to the oriented source; see `CropGeometry`.
     public var crop: CGRect
     public var output: OutputSettings
-    /// Whether the Live Photo records where the video was taken. The date and camera always carry over.
-    public var includesLocation: Bool
+    /// The location written into the Live Photo, or nil for none. The date and camera always carry over.
+    public var location: CaptureLocation?
 
     public init(
         selection: CMTimeRange,
@@ -143,7 +143,7 @@ public struct EditPlan: Sendable, Equatable {
         includesAudio: Bool = true,
         crop: CGRect = CropGeometry.fullFrame,
         output: OutputSettings = .standard,
-        includesLocation: Bool = false
+        location: CaptureLocation? = nil
     ) {
         self.selection = selection
         self.speed = speed
@@ -151,7 +151,7 @@ public struct EditPlan: Sendable, Equatable {
         self.includesAudio = includesAudio
         self.crop = crop
         self.output = output
-        self.includesLocation = includesLocation
+        self.location = location
     }
 
     /// A selection of `duration` source seconds starting at `start`, with the Key Photo in its middle.

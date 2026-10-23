@@ -75,6 +75,8 @@ public struct EditState: Sendable, Equatable {
     public private(set) var includesAudio: Bool
     /// Off unless the user turns it on: a location is personal.
     public private(set) var includesLocation = false
+    /// A location the user chose, replacing the video's own.
+    public private(set) var chosenLocation: CaptureLocation?
 
     /// The initial editing state for a newly opened source.
     public init(source: SourceInfo, output: OutputSettings = .standard) throws {
@@ -121,7 +123,7 @@ public struct EditState: Sendable, Equatable {
             includesAudio: includesAudio,
             crop: cropRect,
             output: output,
-            includesLocation: includesLocation
+            location: includedLocation
         )
     }
 
@@ -183,7 +185,13 @@ public struct EditState: Sendable, Equatable {
 
     public var canUseHDR: Bool { source.isHDR }
 
-    public var canIncludeLocation: Bool { source.hasLocation }
+    /// The location the Live Photo would carry: the one the user chose, or else the video's.
+    public var location: CaptureLocation? { chosenLocation ?? source.location }
+
+    public var canIncludeLocation: Bool { location != nil }
+
+    /// What the Live Photo will carry.
+    public var includedLocation: CaptureLocation? { includesLocation ? location : nil }
 
     public var isHDR: Bool { output.dynamicRange == .high }
 
@@ -365,9 +373,21 @@ public struct EditState: Sendable, Equatable {
         output.bitsPerPixel = bitRate.bitsPerPixel
     }
 
-    /// Ignored for sources without a location.
+    /// Ignored while there's no location to include.
     public mutating func setIncludesLocation(_ include: Bool) {
-        includesLocation = include && source.hasLocation
+        includesLocation = include && location != nil
+    }
+
+    /// Choosing a location includes it.
+    public mutating func chooseLocation(_ chosen: CaptureLocation) {
+        chosenLocation = chosen
+        includesLocation = true
+    }
+
+    /// Back to the video's own location, or to none if it has none.
+    public mutating func clearChosenLocation() {
+        chosenLocation = nil
+        includesLocation = includesLocation && location != nil
     }
 
     /// Ignored for SDR sources, which have no HDR to keep.

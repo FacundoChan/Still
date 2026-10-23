@@ -139,7 +139,7 @@ struct LivePhotoExportTests {
         #expect(source.capture.model == "iPhone 15 Pro" && source.capture.timeZoneOffset == 8 * 3600)
         #expect(source.capture.location?.latitude == 48.8584)
         var plan = EditPlan.centered(start: 1, duration: 3)
-        plan.includesLocation = includesLocation
+        plan.location = includesLocation ? source.capture.location : nil
 
         let directory = Fixture.outputDirectory(for: "metadata-\(includesLocation)")
         try? FileManager.default.removeItem(at: directory)

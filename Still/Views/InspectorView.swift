@@ -2,23 +2,48 @@ import AppKit
 import StillCore
 import SwiftUI
 
-/// Speed, duration, crop, sound, Key Photo, and the output settings and summary.
+/// Two tabs: Edit (speed, duration, crop, sound, Key Photo) for shaping the moment, and Output (resolution, bit
+/// rate, HDR, location, and the summary) for what is saved.
 struct InspectorView: View {
     @Bindable var model: EditorModel
+    @AppStorage("InspectorTab") private var tab = InspectorTab.edit
     @State private var isCustomRatioPresented = false
     @State private var showsCropFields = false
+    @State private var isLocationPickerPresented = false
+
+    enum InspectorTab: String {
+        case edit
+        case output
+    }
 
     var body: some View {
         if let state = model.state {
-            Form {
-                speedSection(state)
-                durationSection(state)
-                cropSection(state)
-                soundSection(state)
-                keyPhotoSection(state)
-                outputSection(state)
+            VStack(spacing: 0) {
+                Picker("Inspector", selection: $tab) {
+                    Text("Edit").tag(InspectorTab.edit)
+                    Text("Output").tag(InspectorTab.output)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.large)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 2)
+                Form {
+                    switch tab {
+                    case .edit:
+                        speedSection(state)
+                        durationSection(state)
+                        cropSection(state)
+                        soundSection(state)
+                        keyPhotoSection(state)
+                    case .output:
+                        outputSection(state)
+                        locationSection(state)
+                    }
+                }
+                .formStyle(.grouped)
             }
-            .formStyle(.grouped)
         }
     }
 
@@ -57,6 +82,19 @@ struct InspectorView: View {
                 }
             }
             .help("The Live Photo's length, 1 to 10 seconds; the selection resizes around the Key Photo")
+            exportIssueRows(state)
+        }
+    }
+
+    /// Why saving is unavailable, and the one-click fix when there is one. Shown in both tabs.
+    @ViewBuilder
+    private func exportIssueRows(_ state: EditState) -> some View {
+        if let issue = state.exportIssue {
+            Label(issue.errorDescription ?? "", systemImage: "exclamationmark.circle")
+                .foregroundStyle(.red)
+            if let speed = state.suggestedSpeed {
+                Button("Use \(TimeFormat.speed(speed))") { model.setSpeed(speed) }
+            }
         }
     }
 
@@ -118,20 +156,25 @@ struct InspectorView: View {
                         model.setCropAspect(.custom(width: width, height: height))
                     }
                 }
-            }
-            HStack {
-                if model.isCropMode {
-                    Button("Done") { model.isCropMode = false }
-                        .keyboardShortcut(.defaultAction)
-                } else {
-                    Button("Edit Crop") { model.isCropMode = true }
-                        .help("Crop (C)")
-                }
-                Spacer()
                 if isCropped {
-                    Button("Reset", systemImage: "arrow.counterclockwise") { model.resetCrop() }
+                    Button("Reset Crop", systemImage: "arrow.counterclockwise") { model.resetCrop() }
+                        .labelStyle(.iconOnly)
                         .buttonStyle(.borderless)
                         .help("Reset Crop")
+                }
+                if model.isCropMode {
+                    Button("Done", systemImage: "checkmark") { model.isCropMode = false }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.circle)
+                        .keyboardShortcut(.defaultAction)
+                        .help("Done (Return)")
+                } else {
+                    Button("Edit Crop", systemImage: "crop") { model.isCropMode = true }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .help("Edit Crop (C)")
                 }
             }
             // A plain row rather than DisclosureGroup, which in a grouped Form ignores accessibility presses.
@@ -261,14 +304,6 @@ struct InspectorView: View {
                 .toggleStyle(.switch)
                 .help("Keep the video's high dynamic range in the photo and the video. Off gives standard color, which looks the same on every screen.")
             }
-            if state.canIncludeLocation {
-                Toggle("Location", isOn: Binding(
-                    get: { state.includesLocation },
-                    set: { model.setIncludesLocation($0) }
-                ))
-                .toggleStyle(.switch)
-                .help("Record where the video was taken in the Live Photo. Its date and camera are always kept.")
-            }
             let size = state.outputGeometry.renderSize
             Text("\(Int(size.width)) × \(Int(size.height)) · \(TimeFormat.seconds(state.outputDuration))")
                 .monospacedDigit()
@@ -281,14 +316,56 @@ struct InspectorView: View {
                 Label("Low resolution", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
             }
-            if let issue = state.exportIssue {
-                Label(issue.errorDescription ?? "", systemImage: "exclamationmark.circle")
-                    .foregroundStyle(.red)
-                if let speed = state.suggestedSpeed {
-                    Button("Use \(TimeFormat.speed(speed))") { model.setSpeed(speed) }
+            exportIssueRows(state)
+        }
+    }
+
+    // MARK: - Location
+
+    private func locationSection(_ state: EditState) -> some View {
+        Section("Location") {
+            if state.canIncludeLocation {
+                Toggle("Include Location", isOn: Binding(
+                    get: { state.includesLocation },
+                    set: { model.setIncludesLocation($0) }
+                ))
+                .toggleStyle(.switch)
+                .help("Record where the video was taken in the Live Photo, so Photos shows it on its map. The date and camera are always kept.")
+            } else {
+                Text("This video has no location.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let location = state.includedLocation {
+                LocationPreview(location: location) {
+                    chooseLocationButton(state, title: "Choose Location…", icon: "mappin.and.ellipse")
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
                 }
+                if state.chosenLocation != nil {
+                    Button(state.source.location == nil ? "Remove Location" : "Use Video's Location") { model.clearChosenLocation() }
+                        .buttonStyle(.borderless)
+                }
+            } else if !state.canIncludeLocation {
+                chooseLocationButton(state, title: "Add Location…", icon: "mappin.and.ellipse")
+                    .labelStyle(.titleOnly)
             }
         }
+    }
+
+    /// Opens the picker, anchored to the button.
+    private func chooseLocationButton(_ state: EditState, title: String, icon: String) -> some View {
+        Button(title, systemImage: icon) { isLocationPickerPresented = true }
+            .help("Search for a place or pick it on a map")
+            .popover(isPresented: $isLocationPickerPresented, arrowEdge: .leading) {
+                LocationPicker(initial: state.location) { location in
+                    isLocationPickerPresented = false
+                    model.chooseLocation(location)
+                } cancel: {
+                    isLocationPickerPresented = false
+                }
+            }
     }
 
     /// “16.6 Mbit/s”, or whole numbers from 100 Mbit/s.

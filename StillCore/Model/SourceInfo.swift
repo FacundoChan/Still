@@ -11,17 +11,17 @@ public struct SourceInfo: Sendable, Equatable {
     public var hasAudio: Bool
     /// HLG, HDR10 or Dolby Vision video.
     public var isHDR: Bool
-    /// Whether the video recorded where it was taken.
-    public var hasLocation: Bool
+    /// Where the video was taken, if it recorded that.
+    public var location: CaptureLocation?
 
     public init(duration: Double, frameRate: Double, orientedSize: CGSize, hasAudio: Bool, isHDR: Bool = false,
-                hasLocation: Bool = false) {
+                location: CaptureLocation? = nil) {
         self.duration = duration
         self.frameRate = frameRate
         self.orientedSize = orientedSize
         self.hasAudio = hasAudio
         self.isHDR = isHDR
-        self.hasLocation = hasLocation
+        self.location = location
     }
 }
 
@@ -33,7 +33,7 @@ extension SourceMedia {
             orientedSize: orientedSize,
             hasAudio: audioTrack != nil,
             isHDR: isHDR,
-            hasLocation: capture.location != nil
+            location: capture.location
         )
     }
 }

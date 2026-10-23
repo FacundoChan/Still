@@ -334,6 +334,14 @@ final class EditorModel {
         UserDefaults.standard.set(include, forKey: Self.locationKey)
     }
 
+    func chooseLocation(_ location: CaptureLocation) {
+        edit("Choose Location") { $0.chooseLocation(location) }
+    }
+
+    func clearChosenLocation() {
+        edit("Clear Chosen Location") { $0.clearChosenLocation() }
+    }
+
     /// New videos start with the resolution, bit rate, HDR and location choices made last.
     private static func applyRememberedOutput(to state: inout EditState) {
         let defaults = UserDefaults.standard

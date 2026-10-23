@@ -58,8 +58,8 @@ public enum LivePhotoMetadata {
     }
 }
 
-/// The capture facts written into one Live Photo: the Key Photo's moment, the camera, and the location when
-/// the edit includes it.
+/// The capture facts written into one Live Photo: the Key Photo's moment, the camera, and the location the edit
+/// includes, if any.
 struct CaptureStamp: Sendable {
     /// The recording start plus the Key Photo's place in the video.
     let photoDate: Date?
@@ -78,7 +78,7 @@ struct CaptureStamp: Sendable {
         make = capture.make
         model = capture.model
         software = capture.software
-        location = plan.includesLocation ? capture.location : nil
+        location = plan.location
     }
 
     /// TIFF, Exif and GPS dictionaries for the Key Photo, which is where Photos reads the date, camera and place.

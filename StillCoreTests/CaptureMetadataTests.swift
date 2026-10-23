@@ -22,15 +22,35 @@ struct CaptureMetadataTests {
         #expect(location.iso6709 == "+48.8584+002.2945+035.000/")
     }
 
+    private let eiffelTower = CaptureLocation(latitude: 48.8584, longitude: 2.2945, altitude: 35)
+    private let sydneyOperaHouse = CaptureLocation(latitude: -33.8568, longitude: 151.2153)
+
     @Test func locationIsOffUntilChosen() throws {
         var state = try EditState(source: SourceInfo(duration: 10, frameRate: 30, orientedSize: CGSize(width: 1920, height: 1080),
-                                                     hasAudio: true, hasLocation: true))
-        #expect(state.canIncludeLocation && !state.includesLocation && !state.plan.includesLocation)
+                                                     hasAudio: true, location: eiffelTower))
+        #expect(state.canIncludeLocation && !state.includesLocation && state.plan.location == nil)
         state.setIncludesLocation(true)
-        #expect(state.plan.includesLocation)
+        #expect(state.plan.location == eiffelTower)
 
         var noLocation = try EditState(source: SourceInfo(duration: 10, frameRate: 30, orientedSize: CGSize(width: 1920, height: 1080), hasAudio: true))
         noLocation.setIncludesLocation(true)
-        #expect(!noLocation.includesLocation)
+        #expect(!noLocation.includesLocation && noLocation.plan.location == nil)
+    }
+
+    @Test func aChosenLocationReplacesTheVideosUntilCleared() throws {
+        var state = try EditState(source: SourceInfo(duration: 10, frameRate: 30, orientedSize: CGSize(width: 1920, height: 1080),
+                                                     hasAudio: true, location: eiffelTower))
+        state.chooseLocation(sydneyOperaHouse)
+        #expect(state.includesLocation && state.plan.location == sydneyOperaHouse, "Choosing a location includes it")
+        state.clearChosenLocation()
+        #expect(state.includesLocation && state.plan.location == eiffelTower)
+
+        // A video without a location gets one only by choosing it, and loses it again when cleared.
+        var plain = try EditState(source: SourceInfo(duration: 10, frameRate: 30, orientedSize: CGSize(width: 1920, height: 1080), hasAudio: true))
+        #expect(!plain.canIncludeLocation)
+        plain.chooseLocation(sydneyOperaHouse)
+        #expect(plain.plan.location == sydneyOperaHouse)
+        plain.clearChosenLocation()
+        #expect(!plain.includesLocation && plain.plan.location == nil)
     }
 }
