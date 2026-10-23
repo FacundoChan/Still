@@ -14,6 +14,11 @@ public struct LivePhotoInspection: Sendable {
     public let videoDuration: CMTime
     public let videoFrameCount: Int
     public let videoCodec: FourCharCode?
+    /// The movie's transfer function, such as ITU_R_709_2 or ITU_R_2100_HLG.
+    public let videoTransferFunction: String?
+    public let videoBitsPerComponent: Int?
+    /// Whether the photo carries an ISO HDR gain map.
+    public let imageHasGainMap: Bool
     public let hasAudio: Bool
 
     public var identifiersMatch: Bool {
@@ -42,11 +47,17 @@ public enum LivePhotoInspector {
         let videoTrack = try await asset.loadTracks(withMediaType: .video).first
         var videoSize = CGSize.zero
         var codec: FourCharCode?
+        var transferFunction: String?
+        var bitsPerComponent: Int?
         var frameCount = 0
         if let videoTrack {
             let (size, formats) = try await videoTrack.load(.naturalSize, .formatDescriptions)
             videoSize = size
             codec = formats.first?.mediaSubType.rawValue
+            if let format = formats.first {
+                transferFunction = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String
+                bitsPerComponent = CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_BitsPerComponent) as? Int
+            }
             frameCount = try countSamples(in: videoTrack, of: asset)
         }
 
@@ -59,6 +70,9 @@ public enum LivePhotoInspector {
             videoDuration: duration,
             videoFrameCount: frameCount,
             videoCodec: codec,
+            videoTransferFunction: transferFunction,
+            videoBitsPerComponent: bitsPerComponent,
+            imageHasGainMap: image.hasGainMap,
             hasAudio: !(try await asset.loadTracks(withMediaType: .audio)).isEmpty
         )
     }
@@ -112,16 +126,17 @@ public enum LivePhotoInspector {
 
     // MARK: - Reading back
 
-    private static func imageInfo(at url: URL) -> (contentIdentifier: String?, size: CGSize) {
+    private static func imageInfo(at url: URL) -> (contentIdentifier: String?, size: CGSize, hasGainMap: Bool) {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        else { return (nil, .zero) }
+        else { return (nil, .zero, false) }
         let makerApple = properties[kCGImagePropertyMakerAppleDictionary] as? [String: Any]
         let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
         let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
         return (
             makerApple?[LivePhotoMetadata.makerAppleContentIdentifierKey] as? String,
-            CGSize(width: width, height: height)
+            CGSize(width: width, height: height),
+            CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, kCGImageAuxiliaryDataTypeISOGainMap) != nil
         )
     }
 

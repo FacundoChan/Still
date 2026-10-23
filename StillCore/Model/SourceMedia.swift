@@ -30,6 +30,8 @@ public struct SourceMedia: @unchecked Sendable {
     public let nominalFrameRate: Float
     /// The single audio track that rendering uses, or nil for a silent source.
     public let audioTrack: AVAssetTrack?
+    /// HLG, HDR10 or Dolby Vision video.
+    public let isHDR: Bool
 
     /// Size as displayed, with the preferred transform applied.
     public var orientedSize: CGSize {
@@ -44,8 +46,8 @@ public struct SourceMedia: @unchecked Sendable {
             guard let videoTrack = try await firstEnabledTrack(of: asset, mediaType: .video) else {
                 throw SourceMediaError.noVideoTrack
             }
-            let (naturalSize, transform, frameRate) = try await videoTrack.load(
-                .naturalSize, .preferredTransform, .nominalFrameRate
+            let (naturalSize, transform, frameRate, characteristics) = try await videoTrack.load(
+                .naturalSize, .preferredTransform, .nominalFrameRate, .mediaCharacteristics
             )
             return SourceMedia(
                 url: url,
@@ -55,7 +57,8 @@ public struct SourceMedia: @unchecked Sendable {
                 naturalSize: naturalSize,
                 preferredTransform: transform,
                 nominalFrameRate: frameRate,
-                audioTrack: try await preferredAudioTrack(of: asset)
+                audioTrack: try await preferredAudioTrack(of: asset),
+                isHDR: characteristics.contains(.containsHDRVideo)
             )
         } catch let error as SourceMediaError {
             throw error

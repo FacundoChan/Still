@@ -199,6 +199,7 @@ struct InspectorView: View {
             if let image = model.livePreview.keyPhoto {
                 Image(nsImage: image)
                     .resizable()
+                    .allowedDynamicRange(.high)
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .opacity(current ? 1 : 0.5)
@@ -252,10 +253,18 @@ struct InspectorView: View {
                 .fixedSize()
             }
             .help("Video quality: a higher bit rate keeps more detail and makes a larger file")
+            if state.canUseHDR {
+                Toggle("HDR", isOn: Binding(
+                    get: { state.isHDR },
+                    set: { model.setHDR($0) }
+                ))
+                .toggleStyle(.switch)
+                .help("Keep the video's high dynamic range in the photo and the video. Off gives standard color, which looks the same on every screen.")
+            }
             let size = state.outputGeometry.renderSize
             Text("\(Int(size.width)) × \(Int(size.height)) · \(TimeFormat.seconds(state.outputDuration))")
                 .monospacedDigit()
-            Text("\(state.output.frameRate) fps · \(Self.megabits(state.output.averageVideoBitRate(for: size))) · Sound \(state.includesAudio ? "on" : "off")")
+            Text("\(state.output.frameRate) fps · \(Self.megabits(state.output.averageVideoBitRate(for: size)))\(state.isHDR ? " · HDR" : "") · Sound \(state.includesAudio ? "on" : "off")")
                 .foregroundStyle(.secondary)
             Text("About \(ByteCountFormatter.string(fromByteCount: state.estimatedFileSize, countStyle: .file))")
                 .foregroundStyle(.secondary)

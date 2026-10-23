@@ -81,6 +81,8 @@ public struct EditState: Sendable, Equatable {
         }
         self.source = source
         self.output = output
+        // HDR videos keep their HDR unless the user turns it off.
+        self.output.dynamicRange = source.isHDR ? .high : .standard
         speed = 1
         cropAspect = .original
         cropRect = CropGeometry.fullFrame
@@ -176,6 +178,10 @@ public struct EditState: Sendable, Equatable {
 
     public var canIncludeAudio: Bool { source.hasAudio }
 
+    public var canUseHDR: Bool { source.isHDR }
+
+    public var isHDR: Bool { output.dynamicRange == .high }
+
     /// A speed is unavailable when even the whole source would make less than the minimum output at it.
     /// The current speed always stays available, so the control never disables its own selection.
     public func unavailabilityReason(forSpeed candidate: Double) -> EditRejection? {
@@ -192,8 +198,9 @@ public struct EditState: Sendable, Equatable {
         let pixels = Double(size.width * size.height)
         let videoBits = Double(output.averageVideoBitRate(for: size)) * outputDuration
         let audioBits = includesAudio ? 128_000 * outputDuration : 0
-        // JPEG at quality 0.92 averages about a third of a byte per pixel on camera footage.
-        let jpegBytes = pixels * 0.35
+        // JPEG at quality 0.92 averages about a third of a byte per pixel on camera footage. An HDR gain map adds
+        // about a quarter.
+        let jpegBytes = pixels * (isHDR ? 0.45 : 0.35)
         return Int64((videoBits + audioBits) / 8 + jpegBytes)
     }
 
@@ -339,6 +346,11 @@ public struct EditState: Sendable, Equatable {
 
     public mutating func setBitRate(_ bitRate: VideoBitRate) {
         output.bitsPerPixel = bitRate.bitsPerPixel
+    }
+
+    /// Ignored for SDR sources, which have no HDR to keep.
+    public mutating func setHDR(_ on: Bool) {
+        output.dynamicRange = on && source.isHDR ? .high : .standard
     }
 
     // MARK: - Crop

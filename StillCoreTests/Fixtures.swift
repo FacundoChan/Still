@@ -51,6 +51,13 @@ extension Fixture {
         Fixture(name: "portrait-hdr-dolbyvision-59.94fps-5.1s.mov", kind: .real, expectedSize: portrait, hasAudio: true, selectionStart: 1),
     ]
 
+    /// HDR sources: a synthetic HLG clip and the Dolby Vision iPhone clips where present.
+    static let hdr: [Fixture] = [
+        Fixture(name: "hdr-hlg-landscape-30fps-4s.mov", kind: .synthetic, expectedSize: landscape, hasAudio: true, selectionStart: 0.5),
+        Fixture(name: "portrait-hdr-dolbyvision-60fps-3.3s.mov", kind: .real, expectedSize: portrait, hasAudio: true, selectionStart: 0.15),
+        Fixture(name: "portrait-hdr-dolbyvision-59.94fps-5.1s.mov", kind: .real, expectedSize: portrait, hasAudio: true, selectionStart: 1),
+    ]
+
     /// 4K sources, with their size at the 4K output resolution.
     static let uhd: [Fixture] = [
         Fixture(name: "uhd-landscape-30fps-4s.mov", kind: .synthetic, expectedSize: CGSize(width: 3840, height: 2160), hasAudio: true, selectionStart: 0.5),

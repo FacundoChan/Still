@@ -37,6 +37,16 @@ make uhd-landscape-30fps-4s.mov \
   -f lavfi -i "testsrc=size=3840x2160:rate=30:duration=4" -f lavfi -i "$(tone 440 4)" \
   "${X264[@]}" "${AAC[@]}" -shortest
 
+# HDR: 10-bit HEVC tagged HLG, as iPhone records. The pattern is toned down to 30% saturation, like camera footage; its
+# whites still lie above SDR white in HLG, so the HDR Key Photo needs its gain map.
+make hdr-hlg-landscape-30fps-4s.mov \
+  -f lavfi -i "testsrc=size=1920x1080:rate=30:duration=4" -f lavfi -i "$(tone 440 4)" \
+  -vf "hue=s=0.3,format=yuv420p,lutyuv=y=16+(val-16)*0.9" \
+  -c:v libx265 -preset veryfast -crf 22 -pix_fmt yuv420p10le -tag:v hvc1 \
+  -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc \
+  -x265-params "log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc" \
+  "${AAC[@]}" -shortest
+
 make silent-landscape-30fps-4s.mov \
   -f lavfi -i "testsrc=size=1920x1080:rate=30:duration=4" \
   "${X264[@]}" -an

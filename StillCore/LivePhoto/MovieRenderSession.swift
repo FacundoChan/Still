@@ -31,6 +31,7 @@ final class MovieRenderSession: @unchecked Sendable {
     private let keyPhotoTime: CMTime
     private let keyPhotoFrameIndex: Int64
     private let keyPhotoURL: URL
+    private let dynamicRange: DynamicRange
     private let contentIdentifier: String
     private let progress: (@Sendable (LivePhotoExportStage) -> Void)?
 
@@ -70,12 +71,13 @@ final class MovieRenderSession: @unchecked Sendable {
         keyPhotoTime = plan.keyPhotoFrameTime
         keyPhotoFrameIndex = plan.keyPhotoFrameIndex
         self.keyPhotoURL = keyPhotoURL
+        dynamicRange = plan.output.dynamicRange
         self.contentIdentifier = contentIdentifier
         self.progress = progress
 
         let videoTracks = graph.composition.tracks(withMediaType: .video)
         videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: videoTracks, videoSettings: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            kCVPixelBufferPixelFormatTypeKey as String: plan.output.dynamicRange.pixelFormat,
             kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
         ])
         videoOutput.videoComposition = graph.videoComposition
@@ -243,7 +245,7 @@ final class MovieRenderSession: @unchecked Sendable {
             return
         }
         do {
-            let writer = keyPhotoWriter ?? KeyPhotoWriter()
+            let writer = keyPhotoWriter ?? KeyPhotoWriter(dynamicRange: dynamicRange)
             keyPhotoWriter = writer
             try writer.write(pixelBuffer, to: keyPhotoURL, contentIdentifier: contentIdentifier)
             keyPhotoPresentationTime = time
@@ -322,18 +324,22 @@ final class MovieRenderSession: @unchecked Sendable {
             AVVideoMaxKeyFrameIntervalKey: frameRate,
         ]
         if let quality = output.encoderQuality { compression[AVVideoQualityKey] = quality }
-        switch output.videoCodec {
-        case .h264: compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
-        case .hevc: compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main_AutoLevel as String
+        // HDR is always 10-bit HEVC, as iPhone records it.
+        let color = output.dynamicRange
+        let codec = color == .high ? .hevc : output.videoCodec
+        switch (codec, color) {
+        case (.h264, _): compression[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
+        case (.hevc, .standard): compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main_AutoLevel as String
+        case (.hevc, .high): compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main10_AutoLevel as String
         }
         return [
-            AVVideoCodecKey: output.videoCodec == .hevc ? AVVideoCodecType.hevc : AVVideoCodecType.h264,
+            AVVideoCodecKey: codec == .hevc ? AVVideoCodecType.hevc : AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width),
             AVVideoHeightKey: Int(size.height),
             AVVideoColorPropertiesKey: [
-                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
-                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+                AVVideoColorPrimariesKey: color.colorPrimaries,
+                AVVideoTransferFunctionKey: color.transferFunction,
+                AVVideoYCbCrMatrixKey: color.yCbCrMatrix,
             ],
             AVVideoCompressionPropertiesKey: compression,
         ]

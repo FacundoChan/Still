@@ -115,7 +115,8 @@ enum MediaProbe {
 
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
-    /// Converts a rendered Rec. 709 buffer to sRGB the same way the Key Photo writer does.
+    /// Converts a rendered Rec. 709 buffer to sRGB the same way the Key Photo writer does. An HLG buffer stays
+    /// in HLG, so its highlights survive.
     static func image(from buffer: CVPixelBuffer) -> CGImage? {
         for (key, value) in [
             (kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2),
@@ -124,8 +125,11 @@ enum MediaProbe {
         ] where CVBufferCopyAttachment(buffer, key, nil) == nil {
             CVBufferSetAttachment(buffer, key, value, .shouldPropagate)
         }
+        let transfer = CVBufferCopyAttachment(buffer, kCVImageBufferTransferFunctionKey, nil) as? String
+        let isHLG = transfer == kCVImageBufferTransferFunction_ITU_R_2100_HLG as String
         let image = CIImage(cvPixelBuffer: buffer)
-        return context.createCGImage(image, from: image.extent, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+        return context.createCGImage(image, from: image.extent, format: .RGBA8,
+                                     colorSpace: CGColorSpace(name: isHLG ? CGColorSpace.itur_2100_HLG : CGColorSpace.sRGB)!)
     }
 
     /// The source frame at `time`, oriented, cropped to `crop`, and scaled to `size`: what the
@@ -145,15 +149,17 @@ enum MediaProbe {
         CGImageDestinationFinalize(destination)
     }
 
-    static func image(at url: URL) throws -> CGImage {
+    /// With `hdr`, an image with a gain map is decoded as HDR, the gain map applied.
+    static func image(at url: URL, hdr: Bool = false) throws -> CGImage {
         let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
-        return try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let options = hdr ? [kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR] as CFDictionary : nil
+        return try #require(CGImageSourceCreateImageAtIndex(source, 0, options))
     }
 
-    /// Peak signal-to-noise ratio over RGB, in dB, after drawing both images into sRGB at `a`’s size.
-    static func psnr(_ a: CGImage, _ b: CGImage) -> Double {
+    /// Peak signal-to-noise ratio over RGB, in dB, after drawing both images into `space` at `a`’s size.
+    static func psnr(_ a: CGImage, _ b: CGImage, in space: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!) -> Double {
         let size = CGSize(width: a.width, height: a.height)
-        let pixelsA = rgba(a, size: size), pixelsB = rgba(b, size: size)
+        let pixelsA = rgba(a, size: size, space: space), pixelsB = rgba(b, size: size, space: space)
         let floatsA = vDSP.integerToFloatingPoint(pixelsA, floatingPointType: Float.self)
         let floatsB = vDSP.integerToFloatingPoint(pixelsB, floatingPointType: Float.self)
         // Both images are opaque, so alpha contributes nothing to the distance.
@@ -172,9 +178,17 @@ enum MediaProbe {
         return context?.makeImage()
     }
 
-    private static func rgba(_ image: CGImage, size: CGSize) -> [UInt8] {
+    private static func rgba(_ image: CGImage, size: CGSize, space: CGColorSpace) -> [UInt8] {
         let width = Int(size.width), height = Int(size.height)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        if space.name != CGColorSpace.sRGB {
+            // Core Image converts extended-range and HDR images into HLG, which Core Graphics bitmaps can't hold.
+            let input = CIImage(cgImage: image)
+            let scaled = input.transformed(by: CGAffineTransform(scaleX: size.width / input.extent.width, y: size.height / input.extent.height))
+            context.render(scaled, toBitmap: &pixels, rowBytes: width * 4, bounds: CGRect(origin: .zero, size: size),
+                           format: .RGBA8, colorSpace: space)
+            return pixels
+        }
         pixels.withUnsafeMutableBytes { buffer in
             let context = CGContext(
                 data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,

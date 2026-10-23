@@ -29,7 +29,7 @@
 - **Choose size and quality.** Export at 4K, 1080p or 720p, at a Low to Very High bit rate. Still shows the bit rate and the file size before you save.
 - **Crop to any shape.** Choose a preset (1:1, 4:5, 9:16, …), a custom ratio, or freeform, and reposition with direct handles or exact pixel values.
 - **What you see is what you save.** The preview, the Key Photo, and the export all render through one composition. The LIVE badge plays the actual result in the system Live Photo player.
-- **HDR handled.** iPhone Dolby Vision, HLG, and HDR10 are converted to consistent SDR.
+- **HDR kept.** iPhone HDR video (HLG, Dolby Vision, HDR10) stays HDR: a 10-bit HLG video and a Key Photo with an HDR gain map, like iPhone HDR photos. Turn HDR off for standard color that looks the same on every screen.
 - **Mac-native.** It's built with SwiftUI, with:
   - one window per video, full undo and redo, and keyboard shortcuts for every edit;
   - drag and drop from Finder or Photos;
@@ -67,11 +67,11 @@ A Live Photo is two files tied together by a shared UUID:
 
 | | Key Photo | Paired video |
 |---|---|---|
-| Format | JPEG, sRGB | HEVC MOV at a constant 30 fps, with AAC sound |
+| Format | JPEG, sRGB; in HDR, Display P3 with an ISO gain map | HEVC MOV at a constant 30 fps, with AAC sound; in HDR, 10-bit HLG |
 | Identifier | Apple MakerNote key 17 | `com.apple.quicktime.content.identifier` |
 | Timing | — | A timed metadata track, `com.apple.quicktime.still-image-time`, on the Key Photo's frame |
 
-Still builds one AVFoundation composition from your edit: trim, speed, orientation, crop, and HDR-to-SDR conversion. Preview playback, the Key Photo, and the export all read from it, so they match by construction.
+Still builds one AVFoundation composition from your edit: trim, speed, orientation, crop, and color, either HLG or standard color. Preview playback, the Key Photo, and the export all read from it, so they match by construction.
 
 A single AVAssetReader → AVAssetWriter pass encodes the movie and captures the Key Photo from the exact frame it encodes. Sound is retimed offline with `AVAudioUnitTimePitch`, which keeps it within 5 ms of the picture; AVFoundation's built-in time-pitch lags up to 92 ms at speed-ups. Finally `PHAssetCreationRequest` saves the pair as one asset.
 
@@ -80,7 +80,7 @@ A single AVAssetReader → AVAssetWriter pass encodes the movie and captures the
 - **Runs on** macOS 26 Tahoe or later, as a universal binary.
 - **Tested on** macOS 27.0 on Apple silicon.
 - **Opens** anything AVFoundation can decode, at any frame rate, including variable frame rate and 120 fps or more. That includes H.264, HEVC, ProRes, Dolby Vision, HLG, and HDR10, in MOV, MP4, and other movie containers.
-- **Produces** Live Photos with HEVC video, which needs macOS 10.13 or iOS 11 or later to play.
+- **Produces** Live Photos with HEVC video, which needs macOS 10.13 or iOS 11 or later to play. HDR Key Photos show as HDR in Photos on macOS 15 and iOS 18 or later, and as standard photos elsewhere.
 
 ## Building from source
 
@@ -113,7 +113,6 @@ To install your build as `/Applications/Still.app`, run `Scripts/install.sh`.
 
 - Verify on macOS 26, on Intel, and with iPhone slow-motion (240 fps) footage
 - A full VoiceOver audit
-- HDR output: Live Photos that keep HDR, with a gain-map Key Photo and an HDR video
 - Batch: several Live Photos from one video in a single pass
 
 ## Contributing

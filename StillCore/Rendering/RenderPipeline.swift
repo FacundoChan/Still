@@ -146,12 +146,14 @@ public enum RenderPipeline {
             timeRange: CMTimeRange(start: .zero, duration: composition.duration)
         ))
 
-        // Rec. 709 output makes AVFoundation tone-map HDR sources (HLG, HDR10, Dolby Vision) to SDR,
-        // and every consumer of this composition converts the same way.
+        // Rec. 709 output makes AVFoundation tone-map HDR sources (HLG, HDR10, Dolby Vision) to SDR; HLG output
+        // keeps them HDR, converting HDR10 and Dolby Vision to HLG. Every consumer of this composition converts
+        // the same way.
+        let color = plan.output.dynamicRange
         let videoComposition = AVVideoComposition(configuration: .init(
-            colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
-            colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2,
-            colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
+            colorPrimaries: color.colorPrimaries,
+            colorTransferFunction: color.transferFunction,
+            colorYCbCrMatrix: color.yCbCrMatrix,
             frameDuration: plan.frameDuration,
             instructions: [instruction],
             renderSize: geometry.renderSize
@@ -167,5 +169,25 @@ public enum RenderPipeline {
             audioTimePitchAlgorithm: .spectral,
             audioRetimer: audioRetimer
         )
+    }
+}
+
+extension DynamicRange {
+    /// The color the composition renders in and the movie is tagged with.
+    var colorPrimaries: String {
+        self == .high ? AVVideoColorPrimaries_ITU_R_2020 : AVVideoColorPrimaries_ITU_R_709_2
+    }
+
+    var transferFunction: String {
+        self == .high ? AVVideoTransferFunction_ITU_R_2100_HLG : AVVideoTransferFunction_ITU_R_709_2
+    }
+
+    var yCbCrMatrix: String {
+        self == .high ? AVVideoYCbCrMatrix_ITU_R_2020 : AVVideoYCbCrMatrix_ITU_R_709_2
+    }
+
+    /// The frames the compositor hands the encoder and the Key Photo writer. HLG needs 10 bits to avoid banding.
+    var pixelFormat: OSType {
+        self == .high ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     }
 }

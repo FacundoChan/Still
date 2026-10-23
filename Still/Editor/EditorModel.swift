@@ -324,7 +324,12 @@ final class EditorModel {
         UserDefaults.standard.set(bitRate.rawValue, forKey: Self.bitRateKey)
     }
 
-    /// New videos start with the resolution and bit rate chosen last.
+    func setHDR(_ on: Bool) {
+        edit(on ? "Turn HDR On" : "Turn HDR Off") { $0.setHDR(on) }
+        UserDefaults.standard.set(on, forKey: Self.hdrKey)
+    }
+
+    /// New videos start with the resolution, bit rate and HDR choice made last.
     private static func applyRememberedOutput(to state: inout EditState) {
         let defaults = UserDefaults.standard
         if let resolution = defaults.string(forKey: resolutionKey).flatMap(OutputResolution.init(rawValue:)) {
@@ -333,10 +338,14 @@ final class EditorModel {
         if let bitRate = defaults.string(forKey: bitRateKey).flatMap(VideoBitRate.init(rawValue:)) {
             state.setBitRate(bitRate)
         }
+        if defaults.object(forKey: hdrKey) != nil {
+            state.setHDR(defaults.bool(forKey: hdrKey))
+        }
     }
 
     private static let resolutionKey = "OutputResolution"
     private static let bitRateKey = "VideoBitRate"
+    private static let hdrKey = "HDR"
 
     /// Choosing a ratio enters Crop mode.
     func setCropAspect(_ aspect: CropAspect) {

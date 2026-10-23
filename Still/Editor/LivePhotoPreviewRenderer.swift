@@ -79,7 +79,7 @@ final class LivePhotoPreviewRenderer {
             removeDirectory()
             self.directory = directory
             livePhoto = photo
-            keyPhoto = NSImage(contentsOf: pair.imageURL)
+            keyPhoto = Self.image(at: pair.imageURL)
             renderedPlan = plan
             isRendering = false
             if playWhenReady {
@@ -95,5 +95,15 @@ final class LivePhotoPreviewRenderer {
     private func removeDirectory() {
         if let directory { try? FileManager.default.removeItem(at: directory) }
         directory = nil
+    }
+
+    /// Decoded with its gain map applied, so the inspector can show an HDR Key Photo as HDR.
+    private static func image(at url: URL) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, [
+                  kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR,
+              ] as CFDictionary)
+        else { return NSImage(contentsOf: url) }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 }

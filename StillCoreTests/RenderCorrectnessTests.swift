@@ -15,6 +15,8 @@ struct RenderCase: Sendable, CustomTestStringConvertible {
     let aspect: CropAspect
     /// Whether the source is SDR, so its decoded frames can serve as ground truth.
     let comparesWithSource: Bool
+    /// HDR output, for HDR sources. Its images are compared in HLG, so highlights aren't clipped.
+    var hdr = false
 
     var url: URL { Fixture.root.appending(path: "Fixtures/\(kind.rawValue)/\(fixture)") }
     var isAvailable: Bool { Fixture.isAvailable(url) }
@@ -26,6 +28,7 @@ struct RenderCase: Sendable, CustomTestStringConvertible {
         state.setSelectionStart(start)
         try state.setSpeed(speed)
         try state.setCropAspect(aspect)
+        state.setHDR(hdr)
         return state
     }
 
@@ -48,6 +51,10 @@ struct RenderCase: Sendable, CustomTestStringConvertible {
                    start: 0.2, end: 4.7, speed: 1.5, aspect: .custom(width: 4, height: 5), comparesWithSource: false),
         RenderCase(name: "iPhone Dolby Vision 0.75× square", fixture: "portrait-hdr-dolbyvision-60fps-3.3s.mov", kind: .real,
                    start: 0.5, end: 2.75, speed: 0.75, aspect: .ratio(width: 1, height: 1), comparesWithSource: false),
+        RenderCase(name: "HLG 1× HDR", fixture: "hdr-hlg-landscape-30fps-4s.mov", kind: .synthetic,
+                   start: 0.5 + 1 / 300, end: 3.5 + 1 / 300, speed: 1, aspect: .original, comparesWithSource: false, hdr: true),
+        RenderCase(name: "iPhone Dolby Vision 1× HDR 4:5", fixture: "portrait-hdr-dolbyvision-59.94fps-5.1s.mov", kind: .real,
+                   start: 1, end: 4, speed: 1, aspect: .ratio(width: 4, height: 5), comparesWithSource: false, hdr: true),
     ]
 }
 
@@ -117,11 +124,13 @@ struct RenderCorrectnessTests {
         }
 
         // Key Photo JPEG vs the movie frame and the playback frame at its presentation time.
-        let keyPhoto = try MediaProbe.image(at: pair.imageURL)
+        // An HDR Key Photo is decoded with its gain map and compared in HLG, like the movie.
+        let space = CGColorSpace(name: edit.hdr ? CGColorSpace.itur_2100_HLG : CGColorSpace.sRGB)!
+        let keyPhoto = try MediaProbe.image(at: pair.imageURL, hdr: edit.hdr)
         let keyIndex = plan.keyPhotoFrameIndex
-        let keyParity = MediaProbe.psnr(keyPhoto, try #require(movie[keyIndex]).image)
+        let keyParity = MediaProbe.psnr(keyPhoto, try #require(movie[keyIndex]).image, in: space)
         #expect(keyParity >= Self.keyPhotoThreshold, "Key Photo vs movie frame \(keyParity) dB")
-        let keyFidelity = MediaProbe.psnr(keyPhoto, try #require(playback[keyIndex]).image)
+        let keyFidelity = MediaProbe.psnr(keyPhoto, try #require(playback[keyIndex]).image, in: space)
         #expect(keyFidelity >= Self.keyPhotoThreshold, "Key Photo vs playback frame \(keyFidelity) dB")
         print(String(format: "MEASURE %@ | export vs playback min %.1f dB | composition vs source min %@ | Key Photo vs movie %.1f dB, vs playback %.1f dB",
                      edit.name, parities.min() ?? 0, truths.min().map { String(format: "%.1f dB", $0) } ?? "n/a", keyParity, keyFidelity))

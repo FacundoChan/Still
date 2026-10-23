@@ -22,6 +22,8 @@ public struct OutputSettings: Sendable, Equatable {
     public var bitsPerPixel: Double
     /// Encoder quality from 0 to 1, where the encoder supports it; nil leaves rate control to the bitrate.
     public var encoderQuality: Double?
+    /// Standard or high dynamic range. High is for HDR sources: the movie is always HEVC then.
+    public var dynamicRange: DynamicRange
 
     public init(
         frameRate: Int32 = 30,
@@ -29,7 +31,8 @@ public struct OutputSettings: Sendable, Equatable {
         durationRange: ClosedRange<Double> = 1...10,
         videoCodec: VideoCodec = .hevc,
         bitsPerPixel: Double = 0.25,
-        encoderQuality: Double? = nil
+        encoderQuality: Double? = nil,
+        dynamicRange: DynamicRange = .standard
     ) {
         self.frameRate = frameRate
         self.maxLongEdge = maxLongEdge
@@ -37,6 +40,7 @@ public struct OutputSettings: Sendable, Equatable {
         self.videoCodec = videoCodec
         self.bitsPerPixel = bitsPerPixel
         self.encoderQuality = encoderQuality
+        self.dynamicRange = dynamicRange
     }
 
     public static let standard = OutputSettings()
@@ -45,6 +49,15 @@ public struct OutputSettings: Sendable, Equatable {
     public func averageVideoBitRate(for size: CGSize) -> Int {
         Int(size.width * size.height * Double(frameRate) * bitsPerPixel)
     }
+}
+
+/// How the output represents brightness and color.
+public enum DynamicRange: Sendable, Equatable {
+    /// Rec. 709 in 8 bits. HDR sources are tone-mapped, so the result looks the same on every screen.
+    case standard
+    /// HLG (Rec. 2100) in 10-bit HEVC, as iPhone records HDR video, and a Key Photo with an HDR gain map. HLG
+    /// also displays correctly on screens without HDR.
+    case high
 }
 
 /// The output resolution the user picks: a cap on the longer edge. Smaller videos and crops are never

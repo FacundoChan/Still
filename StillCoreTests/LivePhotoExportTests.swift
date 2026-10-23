@@ -60,6 +60,47 @@ struct LivePhotoExportTests {
         #expect(pairing == .paired)
     }
 
+    /// HDR sources export HDR by default: a 10-bit HLG movie and a Key Photo with a gain map, which Photos pairs.
+    @Test(arguments: Fixture.hdr.filter(\.isAvailable))
+    func exportsHDR(_ fixture: Fixture) async throws {
+        let source = try await SourceMedia.load(fixture.url)
+        #expect(source.isHDR)
+        var state = try EditState(source: source.info)
+        #expect(state.isHDR)
+        state.moveSelection(toStart: fixture.selectionStart)
+
+        let directory = Fixture.outputDirectory(for: "HDR-" + fixture.name)
+        try? FileManager.default.removeItem(at: directory)
+        let pair = try await LivePhotoExporter().export(state.plan, source: source, to: directory, baseName: "LivePhoto")
+
+        let inspection = try await LivePhotoInspector.inspect(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(inspection.videoCodec == kCMVideoCodecType_HEVC)
+        #expect(inspection.videoTransferFunction == kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG as String)
+        #expect(inspection.videoBitsPerComponent == 10)
+        #expect(inspection.imageHasGainMap)
+        #expect(inspection.videoPixelSize == fixture.expectedSize && inspection.imagePixelSize == fixture.expectedSize)
+        #expect(inspection.identifiersMatch)
+        let pairing = await LivePhotoInspector.checkPairing(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(pairing == .paired)
+    }
+
+    /// With HDR off, an HDR source gives the standard result: 8-bit Rec. 709 and a plain JPEG.
+    @Test func hdrSourceCanExportStandardRange() async throws {
+        let fixture = try #require(Fixture.hdr.first)
+        let source = try await SourceMedia.load(fixture.url)
+        var state = try EditState(source: source.info)
+        state.setHDR(false)
+        #expect(!state.isHDR)
+
+        let directory = Fixture.outputDirectory(for: "SDR-" + fixture.name)
+        try? FileManager.default.removeItem(at: directory)
+        let pair = try await LivePhotoExporter().export(state.plan, source: source, to: directory, baseName: "LivePhoto")
+        let inspection = try await LivePhotoInspector.inspect(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(inspection.videoTransferFunction == kCMFormatDescriptionTransferFunction_ITU_R_709_2 as String)
+        #expect(inspection.videoBitsPerComponent != 10)
+        #expect(!inspection.imageHasGainMap)
+    }
+
     /// 720p gives a 720p pair, and the bit rate reaches the encoder: Very High makes a larger movie than Low.
     @Test func resolutionAndBitRateReachTheExport() async throws {
         let fixture = try #require(Fixture.goalA.first { $0.name == "landscape-sdr-30fps-6s.mov" })

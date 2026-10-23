@@ -253,6 +253,20 @@ struct EditStateTests {
         #expect(state.estimatedFileSize < standard)
     }
 
+    @Test func hdrSourcesKeepHDRUnlessTurnedOff() throws {
+        var hdr = try EditState(source: SourceInfo(duration: 10, frameRate: 30, orientedSize: CGSize(width: 2160, height: 3840), hasAudio: true, isHDR: true))
+        #expect(hdr.canUseHDR && hdr.isHDR && hdr.plan.output.dynamicRange == .high)
+        let withHDR = hdr.estimatedFileSize
+        hdr.setHDR(false)
+        #expect(!hdr.isHDR && hdr.plan.output.dynamicRange == .standard)
+        #expect(hdr.estimatedFileSize < withHDR, "The gain map makes the photo larger")
+
+        var sdr = try EditState(source: source(10))
+        #expect(!sdr.canUseHDR && !sdr.isHDR)
+        sdr.setHDR(true)
+        #expect(!sdr.isHDR, "An SDR video has no HDR to keep")
+    }
+
     @Test func keyPhotoClampsToLastRenderedFrame() throws {
         var state = try EditState(source: source(20))
         state.setKeyPhoto(at: 3)
