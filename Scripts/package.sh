@@ -33,7 +33,9 @@ for arg in "$@"; do
 done
 
 identity=${SIGN_IDENTITY:-Apple Development}
-derived=build/DerivedData
+# Spotlight skips folders ending in .noindex, so build copies stay out of search and only the installed
+# Still shows up.
+derived=build/DerivedData.noindex
 app=$derived/Build/Products/Release/Still.app
 dist=build/dist
 

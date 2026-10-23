@@ -112,7 +112,7 @@ Choose the **Still** scheme and press ⌘R. `Still.xcodeproj` is generated from 
 The project signs with the maintainer's team. To build under your own Apple ID, set `DEVELOPMENT_TEAM` in `project.yml` to your team ID, or sign ad hoc from the command line:
 
 ```bash
-xcodebuild -project Still.xcodeproj -scheme Still -derivedDataPath build/DerivedData CODE_SIGN_IDENTITY=- build
+xcodebuild -project Still.xcodeproj -scheme Still -derivedDataPath build/DerivedData.noindex CODE_SIGN_IDENTITY=- build
 ```
 
 ### Package a release
@@ -132,7 +132,7 @@ Scripts/make-fixtures.sh
 ```
 
 ```bash
-xcodebuild test -project Still.xcodeproj -scheme Still -destination 'platform=macOS' -derivedDataPath build/DerivedData
+xcodebuild test -project Still.xcodeproj -scheme Still -destination 'platform=macOS' -derivedDataPath build/DerivedData.noindex
 ```
 
 What the 55 tests cover:
@@ -151,7 +151,7 @@ Clips recorded on the maintainer's iPhone add real-world cases when they're pres
 Debug builds accept these, for exercising failure paths by hand:
 
 ```bash
-open build/DerivedData/Build/Products/Debug/Still.app --args -StillSimulateFailure diskFull -StillExportFrameDelay 0.04
+open build/DerivedData.noindex/Build/Products/Debug/Still.app --args -StillSimulateFailure diskFull -StillExportFrameDelay 0.04
 ```
 
 - `-StillSimulateFailure photosDenied | photosFailed | diskFull | render` raises that failure during the next export.
