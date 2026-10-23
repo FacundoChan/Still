@@ -22,6 +22,9 @@ jobs:
     # Xcode 27 preview image: the same Xcode 27.1 (27A9275) the project is developed with.
     runs-on: xcode-27
     timeout-minutes: 100
+    # Writing contents lets a tag's run create its draft release.
+    permissions:
+      contents: write
     env:
       HAS_SIGNING: ${{ secrets.DEVELOPER_ID_P12_BASE64 != '' }}
       HAS_NOTARY: ${{ secrets.NOTARY_KEY_P8_BASE64 != '' }}
