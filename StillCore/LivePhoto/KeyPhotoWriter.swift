@@ -9,12 +9,14 @@ import UniformTypeIdentifiers
 /// SDR image, and Photos uses the gain map to show the HDR frame on screens that can.
 struct KeyPhotoWriter {
     let dynamicRange: DynamicRange
+    let capture: CaptureStamp
     private let context = CIContext(options: [.cacheIntermediates: false])
 
     func write(_ pixelBuffer: CVPixelBuffer, to url: URL, contentIdentifier: String) throws {
         tagColor(pixelBuffer)
         let image = CIImage(cvPixelBuffer: pixelBuffer)
         var properties = LivePhotoMetadata.imageProperties(contentIdentifier: contentIdentifier, quality: 0.92)
+            .merging(capture.imageProperties) { kept, _ in kept }
         let cgImage: CGImage?
         switch dynamicRange {
         case .standard:

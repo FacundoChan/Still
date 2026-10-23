@@ -53,6 +53,10 @@ public struct LivePhotoPair: Sendable, Equatable {
     public let duration: CMTime
     public let pixelSize: CGSize
     public let hasAudio: Bool
+    /// The Key Photo's moment, from the video's recording date; nil when the video has none.
+    public let captureDate: Date?
+    /// Where the video was taken, when the edit includes it.
+    public let location: CaptureLocation?
 
     func moved(to directory: URL) -> LivePhotoPair {
         LivePhotoPair(
@@ -62,7 +66,9 @@ public struct LivePhotoPair: Sendable, Equatable {
             keyPhotoTime: keyPhotoTime,
             duration: duration,
             pixelSize: pixelSize,
-            hasAudio: hasAudio
+            hasAudio: hasAudio,
+            captureDate: captureDate,
+            location: location
         )
     }
 }
@@ -102,6 +108,7 @@ public struct LivePhotoExporter: Sendable {
         }
 
         let contentIdentifier = UUID().uuidString
+        let capture = CaptureStamp(capture: source.capture, plan: plan)
         do {
             try Task.checkCancellation()
             let graph = try RenderPipeline.build(source: source, plan: plan)
@@ -111,6 +118,7 @@ public struct LivePhotoExporter: Sendable {
                 movieURL: videoURL,
                 keyPhotoURL: imageURL,
                 contentIdentifier: contentIdentifier,
+                capture: capture,
                 progress: progress
             )
             // Retiming the sound happens while the session is set up, before any frame is read.
@@ -138,7 +146,9 @@ public struct LivePhotoExporter: Sendable {
                 keyPhotoTime: result.keyPhotoPresentationTime,
                 duration: graph.outputDuration,
                 pixelSize: graph.renderSize,
-                hasAudio: graph.hasAudio
+                hasAudio: graph.hasAudio,
+                captureDate: capture.photoDate,
+                location: capture.location
             )
         } catch {
             // Both files are new (checked above), so removing them never touches the user's data.

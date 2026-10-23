@@ -32,6 +32,8 @@ public struct SourceMedia: @unchecked Sendable {
     public let audioTrack: AVAssetTrack?
     /// HLG, HDR10 or Dolby Vision video.
     public let isHDR: Bool
+    /// When, on which camera and where the video was recorded, as far as its metadata says.
+    public let capture: CaptureMetadata
 
     /// Size as displayed, with the preferred transform applied.
     public var orientedSize: CGSize {
@@ -58,13 +60,46 @@ public struct SourceMedia: @unchecked Sendable {
                 preferredTransform: transform,
                 nominalFrameRate: frameRate,
                 audioTrack: try await preferredAudioTrack(of: asset),
-                isHDR: characteristics.contains(.containsHDRVideo)
+                isHDR: characteristics.contains(.containsHDRVideo),
+                capture: try await captureMetadata(of: asset)
             )
         } catch let error as SourceMediaError {
             throw error
         } catch {
             throw SourceMediaError.unreadable(underlying: error)
         }
+    }
+
+    /// iPhone writes QuickTime metadata; other cameras and apps often write only the common keys.
+    private static func captureMetadata(of asset: AVAsset) async throws -> CaptureMetadata {
+        let items = try await asset.load(.metadata)
+        func string(_ identifiers: AVMetadataIdentifier...) async -> String? {
+            for identifier in identifiers {
+                for item in AVMetadataItem.metadataItems(from: items, filteredByIdentifier: identifier) {
+                    if let value = try? await item.load(.stringValue), !value.isEmpty { return value }
+                }
+            }
+            return nil
+        }
+        var capture = CaptureMetadata(
+            make: await string(.quickTimeMetadataMake, .commonIdentifierMake),
+            model: await string(.quickTimeMetadataModel, .commonIdentifierModel),
+            software: await string(.quickTimeMetadataSoftware, .commonIdentifierSoftware)
+        )
+        if let text = await string(.quickTimeMetadataCreationDate, .commonIdentifierCreationDate),
+           let parsed = CaptureMetadata.parseCreationDate(text) {
+            capture.date = parsed.date
+            capture.timeZoneOffset = parsed.offset
+        } else {
+            capture.date = try? await asset.load(.creationDate)?.load(.dateValue)
+        }
+        if let text = await string(.quickTimeMetadataLocationISO6709, .commonIdentifierLocation),
+           var location = CaptureLocation(iso6709: text) {
+            let accuracy = AVMetadataIdentifier(rawValue: "mdta/com.apple.quicktime.location.accuracy.horizontal")
+            location.horizontalAccuracy = await string(accuracy).flatMap(Double.init)
+            capture.location = location
+        }
+        return capture
     }
 
     private static func firstEnabledTrack(of asset: AVAsset, mediaType: AVMediaType) async throws -> AVAssetTrack? {

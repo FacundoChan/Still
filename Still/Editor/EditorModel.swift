@@ -329,7 +329,12 @@ final class EditorModel {
         UserDefaults.standard.set(on, forKey: Self.hdrKey)
     }
 
-    /// New videos start with the resolution, bit rate and HDR choice made last.
+    func setIncludesLocation(_ include: Bool) {
+        edit(include ? "Include Location" : "Remove Location") { $0.setIncludesLocation(include) }
+        UserDefaults.standard.set(include, forKey: Self.locationKey)
+    }
+
+    /// New videos start with the resolution, bit rate, HDR and location choices made last.
     private static func applyRememberedOutput(to state: inout EditState) {
         let defaults = UserDefaults.standard
         if let resolution = defaults.string(forKey: resolutionKey).flatMap(OutputResolution.init(rawValue:)) {
@@ -341,11 +346,13 @@ final class EditorModel {
         if defaults.object(forKey: hdrKey) != nil {
             state.setHDR(defaults.bool(forKey: hdrKey))
         }
+        state.setIncludesLocation(defaults.bool(forKey: locationKey))
     }
 
     private static let resolutionKey = "OutputResolution"
     private static let bitRateKey = "VideoBitRate"
     private static let hdrKey = "HDR"
+    private static let locationKey = "IncludesLocation"
 
     /// Choosing a ratio enters Crop mode.
     func setCropAspect(_ aspect: CropAspect) {

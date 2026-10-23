@@ -1,5 +1,7 @@
+import AVFoundation
 import CoreMedia
 import Foundation
+import ImageIO
 import Testing
 @testable import StillCore
 
@@ -126,6 +128,76 @@ struct LivePhotoExportTests {
         #expect(calibration.photoBytesPerPixel > 0)
         print("MEASURE 720p movie: low \(low) bytes, very high \(veryHigh) bytes")
         #expect(Double(veryHigh) > Double(low) * 1.5)
+    }
+
+    /// The Live Photo keeps the video's date (at the Key Photo's moment) and camera, and its location only when
+    /// the edit includes it.
+    @Test(arguments: [false, true])
+    func carriesCaptureMetadata(includesLocation: Bool) async throws {
+        let fixture = try #require(Fixture.goalA.first { $0.name == "landscape-sdr-30fps-6s.mov" })
+        let source = try await SourceMedia.load(try await Self.taggedCopy(of: fixture.url))
+        #expect(source.capture.model == "iPhone 15 Pro" && source.capture.timeZoneOffset == 8 * 3600)
+        #expect(source.capture.location?.latitude == 48.8584)
+        var plan = EditPlan.centered(start: 1, duration: 3)
+        plan.includesLocation = includesLocation
+
+        let directory = Fixture.outputDirectory(for: "metadata-\(includesLocation)")
+        try? FileManager.default.removeItem(at: directory)
+        let pair = try await LivePhotoExporter().export(plan, source: source, to: directory, baseName: "LivePhoto")
+
+        // Recorded at 15:36:27 (UTC+8); the Key Photo is 2.5 s in.
+        #expect(pair.captureDate == Date(timeIntervalSince1970: 1_716_276_989.5))
+        #expect((pair.location != nil) == includesLocation)
+        let imageSource = try #require(CGImageSourceCreateWithURL(pair.imageURL as CFURL, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any])
+        let exif = try #require(properties[kCGImagePropertyExifDictionary] as? [CFString: Any])
+        let tiff = try #require(properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any])
+        #expect(exif[kCGImagePropertyExifDateTimeOriginal] as? String == "2024:05:21 15:36:29")
+        #expect(exif[kCGImagePropertyExifSubsecTimeOriginal] as? String == "500")
+        #expect(exif[kCGImagePropertyExifOffsetTimeOriginal] as? String == "+08:00")
+        #expect(tiff[kCGImagePropertyTIFFMake] as? String == "Apple" && tiff[kCGImagePropertyTIFFModel] as? String == "iPhone 15 Pro")
+        let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        #expect((gps != nil) == includesLocation)
+        if let gps { #expect(gps[kCGImagePropertyGPSLatitude] as? Double == 48.8584 && gps[kCGImagePropertyGPSLatitudeRef] as? String == "N") }
+
+        let movie = try await AVURLAsset(url: pair.videoURL).load(.metadata)
+        func value(_ key: String) async -> String? {
+            let identifier = AVMetadataIdentifier(rawValue: "mdta/\(key)")
+            return try? await AVMetadataItem.metadataItems(from: movie, filteredByIdentifier: identifier).first?.load(.stringValue)
+        }
+        #expect(await value("com.apple.quicktime.creationdate") == "2024-05-21T15:36:28+0800", "The movie starts 1 s in")
+        #expect(await value("com.apple.quicktime.model") == "iPhone 15 Pro")
+        #expect((await value("com.apple.quicktime.location.ISO6709") != nil) == includesLocation)
+
+        let inspection = try await LivePhotoInspector.inspect(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(inspection.identifiersMatch)
+        let pairing = await LivePhotoInspector.checkPairing(imageURL: pair.imageURL, videoURL: pair.videoURL)
+        #expect(pairing == .paired)
+    }
+
+    /// A copy of `url` with the QuickTime capture metadata iPhone writes, and a public landmark as its location.
+    /// ffmpeg can only write these keys as an iTunes list, which isn't what iPhone videos carry.
+    private static func taggedCopy(of url: URL) async throws -> URL {
+        let output = Fixture.outputDirectory(for: "tagged-source").appending(path: url.lastPathComponent)
+        try? FileManager.default.removeItem(at: output)
+        try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let session = try #require(AVAssetExportSession(asset: AVURLAsset(url: url), presetName: AVAssetExportPresetPassthrough))
+        session.metadata = [
+            ("com.apple.quicktime.creationdate", "2024-05-21T15:36:27+0800"),
+            ("com.apple.quicktime.make", "Apple"),
+            ("com.apple.quicktime.model", "iPhone 15 Pro"),
+            ("com.apple.quicktime.software", "17.4.1"),
+            ("com.apple.quicktime.location.ISO6709", "+48.8584+002.2945+035.000/"),
+        ].map { key, value in
+            let item = AVMutableMetadataItem()
+            item.keySpace = .quickTimeMetadata
+            item.key = key as NSString
+            item.value = value as NSString
+            item.dataType = kCMMetadataBaseDataType_UTF8 as String
+            return item
+        }
+        try await session.export(to: output, as: .mov)
+        return output
     }
 
     /// Negative control: the pairing check must reject an image and movie whose identifiers differ,

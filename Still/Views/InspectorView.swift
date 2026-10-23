@@ -261,6 +261,14 @@ struct InspectorView: View {
                 .toggleStyle(.switch)
                 .help("Keep the video's high dynamic range in the photo and the video. Off gives standard color, which looks the same on every screen.")
             }
+            if state.canIncludeLocation {
+                Toggle("Location", isOn: Binding(
+                    get: { state.includesLocation },
+                    set: { model.setIncludesLocation($0) }
+                ))
+                .toggleStyle(.switch)
+                .help("Record where the video was taken in the Live Photo. Its date and camera are always kept.")
+            }
             let size = state.outputGeometry.renderSize
             Text("\(Int(size.width)) × \(Int(size.height)) · \(TimeFormat.seconds(state.outputDuration))")
                 .monospacedDigit()

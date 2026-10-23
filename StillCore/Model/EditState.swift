@@ -73,6 +73,8 @@ public struct EditState: Sendable, Equatable {
     /// Normalized to the oriented source; see `CropGeometry`.
     public private(set) var cropRect: CGRect
     public private(set) var includesAudio: Bool
+    /// Off unless the user turns it on: a location is personal.
+    public private(set) var includesLocation = false
 
     /// The initial editing state for a newly opened source.
     public init(source: SourceInfo, output: OutputSettings = .standard) throws {
@@ -118,7 +120,8 @@ public struct EditState: Sendable, Equatable {
             keyPhotoSourceTime: .seconds(keyPhotoTime),
             includesAudio: includesAudio,
             crop: cropRect,
-            output: output
+            output: output,
+            includesLocation: includesLocation
         )
     }
 
@@ -179,6 +182,8 @@ public struct EditState: Sendable, Equatable {
     public var canIncludeAudio: Bool { source.hasAudio }
 
     public var canUseHDR: Bool { source.isHDR }
+
+    public var canIncludeLocation: Bool { source.hasLocation }
 
     public var isHDR: Bool { output.dynamicRange == .high }
 
@@ -358,6 +363,11 @@ public struct EditState: Sendable, Equatable {
 
     public mutating func setBitRate(_ bitRate: VideoBitRate) {
         output.bitsPerPixel = bitRate.bitsPerPixel
+    }
+
+    /// Ignored for sources without a location.
+    public mutating func setIncludesLocation(_ include: Bool) {
+        includesLocation = include && source.hasLocation
     }
 
     /// Ignored for SDR sources, which have no HDR to keep.

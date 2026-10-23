@@ -1,3 +1,4 @@
+import CoreLocation
 import Photos
 
 public enum PhotosSaveError: Error, LocalizedError {
@@ -50,6 +51,17 @@ public enum PhotosLibrarySaver {
         do {
             try await PHPhotoLibrary.shared().performChanges {
                 let request = PHAssetCreationRequest.forAsset()
+                // Without these, Photos dates the asset now; the photo's Exif says the same.
+                if let date = pair.captureDate { request.creationDate = date }
+                if let location = pair.location {
+                    request.location = CLLocation(
+                        coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude),
+                        altitude: location.altitude ?? 0,
+                        horizontalAccuracy: location.horizontalAccuracy ?? 0,
+                        verticalAccuracy: location.altitude == nil ? -1 : 0,
+                        timestamp: pair.captureDate ?? Date()
+                    )
+                }
                 let photoOptions = PHAssetResourceCreationOptions()
                 photoOptions.originalFilename = "\(originalFilename).JPG"
                 let videoOptions = PHAssetResourceCreationOptions()

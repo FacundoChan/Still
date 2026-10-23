@@ -32,6 +32,7 @@ final class MovieRenderSession: @unchecked Sendable {
     private let keyPhotoFrameIndex: Int64
     private let keyPhotoURL: URL
     private let dynamicRange: DynamicRange
+    private let capture: CaptureStamp
     private let contentIdentifier: String
     private let progress: (@Sendable (LivePhotoExportStage) -> Void)?
 
@@ -57,11 +58,13 @@ final class MovieRenderSession: @unchecked Sendable {
         movieURL: URL,
         keyPhotoURL: URL,
         contentIdentifier: String,
+        capture: CaptureStamp,
         progress: (@Sendable (LivePhotoExportStage) -> Void)?
     ) throws {
         reader = try AVAssetReader(asset: graph.composition)
         writer = try AVAssetWriter(outputURL: movieURL, fileType: .mov)
-        writer.metadata = [LivePhotoMetadata.contentIdentifierItem(contentIdentifier)]
+        writer.metadata = [LivePhotoMetadata.contentIdentifierItem(contentIdentifier)] + capture.movieItems
+        self.capture = capture
         writer.shouldOptimizeForNetworkUse = true
 
         outputDuration = graph.outputDuration
@@ -245,7 +248,7 @@ final class MovieRenderSession: @unchecked Sendable {
             return
         }
         do {
-            let writer = keyPhotoWriter ?? KeyPhotoWriter(dynamicRange: dynamicRange)
+            let writer = keyPhotoWriter ?? KeyPhotoWriter(dynamicRange: dynamicRange, capture: capture)
             keyPhotoWriter = writer
             try writer.write(pixelBuffer, to: keyPhotoURL, contentIdentifier: contentIdentifier)
             keyPhotoPresentationTime = time
