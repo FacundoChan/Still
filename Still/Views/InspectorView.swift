@@ -314,6 +314,7 @@ struct InspectorView: View {
                     .help("Length of the Live Photo")
             }
             .monospacedDigit()
+            .labelStyle(AlignedIconLabelStyle())
             HStack {
                 Label("\(state.output.frameRate) fps", systemImage: "film")
                     .help("Frames per second of the video")
@@ -323,6 +324,7 @@ struct InspectorView: View {
             }
             .monospacedDigit()
             .foregroundStyle(.secondary)
+            .labelStyle(AlignedIconLabelStyle())
             if state.isLowResolution {
                 Label("Low resolution", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)
@@ -351,6 +353,7 @@ struct InspectorView: View {
             .help("Estimated from how this video encodes in the Live Photo preview")
         }
         .monospacedDigit()
+        .labelStyle(AlignedIconLabelStyle())
     }
 
     // MARK: - Location
@@ -585,5 +588,16 @@ final class FittingSegmentedControl: NSSegmentedControl {
         // The control size alone keeps the regular font, and so nearly the regular width.
         control.font = .systemFont(ofSize: NSFont.systemFontSize(for: size))
         control.segmentDistribution = .fillProportionally
+    }
+}
+
+/// Icons share one width, so the titles beside them line up whatever the symbol's shape.
+struct AlignedIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+                .frame(width: 20)
+            configuration.title
+        }
     }
 }

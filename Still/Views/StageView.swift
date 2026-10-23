@@ -43,6 +43,7 @@ struct EditorContent: View {
 /// Shows the video exactly as it will export, or the full frame with the crop overlay in Crop mode.
 struct StageView: View {
     @Bindable var model: EditorModel
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -87,6 +88,10 @@ struct StageView: View {
                 }
             }
             .contentShape(Rectangle())
+            // The stage players render at the size the video takes on screen.
+            .onChange(of: max(frame.width, frame.height) * displayScale, initial: true) { _, pixels in
+                if pixels > 0 { model.stageDidResize(longEdgePixels: pixels) }
+            }
             .onLongPressGesture(minimumDuration: 0.3, maximumDistance: 12) {
                 // Press and hold plays the Live Photo, as on iPhone.
                 if !model.isCropMode { model.previewLivePhoto() }

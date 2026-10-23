@@ -503,15 +503,31 @@ final class EditorModel {
 
     // MARK: - Previews
 
-    /// The stage players render at most 1080p, whatever the output resolution. The framing is the same, and
-    /// 4K compositions would play less smoothly for no visible gain in the window.
-    private static let stageLongEdge = OutputResolution.fullHD.maxLongEdge
+    /// The stage's longer edge in pixels, which the stage players render at: sharp on the screen, never above the
+    /// output, and no larger than the window needs. Rounded up to 256-pixel steps, so resizing the window rebuilds
+    /// the players only now and then.
+    @ObservationIgnored private var stageLongEdge = OutputResolution.fullHD.maxLongEdge
+    @ObservationIgnored private var stageResizeTask: Task<Void, Never>?
+
+    /// Called by the stage with its size on screen, in pixels.
+    func stageDidResize(longEdgePixels: CGFloat) {
+        let stepped = max(720, Int((longEdgePixels / 256).rounded(.up)) * 256)
+        guard stepped != stageLongEdge else { return }
+        stageLongEdge = stepped
+        stageResizeTask?.cancel()
+        stageResizeTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, let self else { return }
+            self.refreshSourcePreview()
+            self.scheduleSelectionPreview()
+        }
+    }
 
     /// The source player shows the whole clip at 1×: full frame in Crop mode, otherwise the exported crop.
     private func refreshSourcePreview() {
         guard let source, let state else { return }
         var output = state.output
-        output.maxLongEdge = min(output.maxLongEdge, Self.stageLongEdge)
+        output.maxLongEdge = min(output.maxLongEdge, stageLongEdge)
         output.frameRate = Int32(min(120, max(30, state.source.frameRate.rounded())))
         output.durationRange = 0...Double.greatestFiniteMagnitude
         let plan = EditPlan(
@@ -532,10 +548,14 @@ final class EditorModel {
     private func scheduleRenders(includingSelection: Bool = true) {
         guard let source, let state else { return }
         livePreview.schedule(state.plan, source: source)
-        guard includingSelection else { return }
+        if includingSelection { scheduleSelectionPreview() }
+    }
+
+    private func scheduleSelectionPreview() {
+        guard let source, let state else { return }
         selectionPreviewTask?.cancel()
         var plan = state.plan
-        plan.output.maxLongEdge = min(plan.output.maxLongEdge, Self.stageLongEdge)
+        plan.output.maxLongEdge = min(plan.output.maxLongEdge, stageLongEdge)
         selectionPreviewTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
