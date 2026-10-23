@@ -15,7 +15,7 @@ struct EditorWindowRequest: Codable, Hashable {
 }
 
 /// Routes videos to windows: the active window takes a video while it is still empty; otherwise the video
-/// opens in a new window (goal.md §5, “Import sources”).
+/// opens in a new window.
 ///
 /// Window values must be Codable, so the security-scoped URLs themselves wait here until their window appears.
 @Observable
@@ -107,7 +107,7 @@ final class WindowCoordinator {
         for url in urls { open(url, preferring: activeEditor) }
     }
 
-    // MARK: - Quitting (goal.md §5, “Windows”)
+    // MARK: - Quitting
 
     var needsQuitConfirmation: Bool {
         openEditors.contains(where: \.needsCloseConfirmation)

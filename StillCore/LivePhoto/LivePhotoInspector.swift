@@ -65,7 +65,7 @@ public enum LivePhotoInspector {
 
     /// Asks Photos to load the pair as a Live Photo without touching the library.
     ///
-    /// This is the automated pairing check (goal.md §13, Goal A inner loop).
+    /// This is the automated pairing check.
     public static func checkPairing(imageURL: URL, videoURL: URL) async -> LivePhotoPairingResult {
         do {
             _ = try await loadLivePhoto(imageURL: imageURL, videoURL: videoURL)

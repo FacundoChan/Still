@@ -6,7 +6,7 @@ struct StillApp: App {
     @State private var coordinator = WindowCoordinator.shared
 
     var body: some Scene {
-        // One window per video (goal.md §5, “Windows”).
+        // One window per video.
         WindowGroup(for: EditorWindowRequest.self) { $request in
             EditorWindow(request: request)
                 .environment(coordinator)

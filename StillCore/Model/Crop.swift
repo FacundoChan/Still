@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// An aspect-ratio choice for the crop (goal.md §8).
+/// An aspect-ratio choice for the crop.
 public enum CropAspect: Hashable, Sendable {
     /// The source’s own ratio; selecting it resets to the full frame.
     case original

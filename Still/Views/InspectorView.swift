@@ -2,7 +2,7 @@ import AppKit
 import StillCore
 import SwiftUI
 
-/// Speed, duration, crop, sound, Key Photo, and the output summary (goal.md §4).
+/// Speed, duration, crop, sound, Key Photo, and the output summary.
 struct InspectorView: View {
     @Bindable var model: EditorModel
     @State private var isCustomRatioPresented = false
@@ -256,7 +256,7 @@ struct DurationField: View {
     }
 }
 
-/// Crop position and size in source pixels (goal.md §8, numeric alternatives).
+/// Crop position and size in source pixels.
 struct CropFields: View {
     let state: EditState
     let commit: (CGRect) -> Void

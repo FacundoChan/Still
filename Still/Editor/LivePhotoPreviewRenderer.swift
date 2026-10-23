@@ -4,7 +4,7 @@ import Photos
 import StillCore
 
 /// Renders a reduced-size Live Photo in the background once edits settle, for the LIVE preview and the
-/// inspector’s Key Photo (goal.md §7, “Live Photo preview”). It uses the export pipeline, so the Key Photo
+/// inspector’s Key Photo. It uses the export pipeline, so the Key Photo
 /// shown is the one that will be saved.
 @Observable
 final class LivePhotoPreviewRenderer {

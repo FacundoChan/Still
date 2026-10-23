@@ -53,7 +53,7 @@ struct RenderCase: Sendable, CustomTestStringConvertible {
 
 @Suite("Render correctness", .serialized)
 struct RenderCorrectnessTests {
-    /// goal.md §13, Goal B: decoded export frames match what preview playback shows at PSNR ≥ 35 dB.
+    /// Decoded export frames match what preview playback shows at PSNR ≥ 35 dB.
     static let parityThreshold = 35.0
     /// The Key Photo is a JPEG (quality 0.92), and JPEG and HEVC encoders differ between machines: on the
     /// synthetic test pattern it measures 35.6–41 dB on Apple silicon hardware but 31.5–40 dB on GitHub's
@@ -161,7 +161,7 @@ struct RenderCorrectnessTests {
         #expect(try await MediaProbe.audio(pair.videoURL) == nil)
     }
 
-    /// The 440 Hz tone must stay 440 Hz at any speed (goal.md §9, pitch preserved).
+    /// The 440 Hz tone must stay 440 Hz at any speed.
     @Test(arguments: [0.5, 0.75, 1.5, 2])
     func pitchIsPreserved(speed: Double) async throws {
         let url = Fixture.root.appending(path: "Fixtures/synthetic/landscape-sdr-30fps-6s.mov")
@@ -180,7 +180,7 @@ struct RenderCorrectnessTests {
         #expect(abs(frequency - 440) / 440 < 0.02, "Measured \(frequency) Hz at \(speed)×")
     }
 
-    /// Each white flash must coincide with its beep after retiming (goal.md §14, audio stays in sync).
+    /// Each white flash must coincide with its beep after retiming.
     @Test(arguments: [(0.5, 0.94), (1.0, 0.94), (2.0, 0.95)])
     func audioStaysInSync(speed: Double, start: Double) async throws {
         let url = Fixture.root.appending(path: "Fixtures/synthetic/av-sync-30fps-8s.mov")

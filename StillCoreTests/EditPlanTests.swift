@@ -12,7 +12,7 @@ struct EditPlanTests {
         )
     }
 
-    // goal.md §6, required examples.
+    // Output durations for a few selections and speeds.
     @Test(arguments: [
         (10.0, 13.0, 1.0, 3.0),
         (10.0, 16.0, 2.0, 3.0),
@@ -23,7 +23,7 @@ struct EditPlanTests {
         #expect(abs(plan(from: start, to: end, speed: speed).outputDuration.seconds - expected) < 1e-6)
     }
 
-    // goal.md §7: a Key Photo at source 12 s in a 10–16 s selection at 2× is output second 1.
+    // A Key Photo at source 12 s in a 10–16 s selection at 2× is output second 1.
     @Test func keyPhotoOutputTime() {
         let edit = plan(from: 10, to: 16, speed: 2, key: 12)
         #expect(abs(edit.keyPhotoOutputTime.seconds - 1) < 1e-6)

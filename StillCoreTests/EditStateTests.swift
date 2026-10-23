@@ -12,7 +12,7 @@ struct EditStateTests {
         abs(a - b) <= tolerance
     }
 
-    // MARK: - Initial state (§5)
+    // MARK: - Initial state
 
     @Test func longSourceStartsWithThreeSeconds() throws {
         let state = try EditState(source: source(42))
@@ -44,7 +44,7 @@ struct EditStateTests {
         }
     }
 
-    // MARK: - §6 speed and Key Photo examples
+    // MARK: - Speed and Key Photo examples
 
     @Test func speedChangeKeepsTheMoment() throws {
         // Selection 10–13 s: 1× gives 3 s, 2× gives 1.5 s, 0.5× gives 6 s.
@@ -218,7 +218,7 @@ struct EditStateTests {
         #expect(close(state.keyPhotoTime, 89.0 / 30))
     }
 
-    // MARK: - Motion rate (§6)
+    // MARK: - Motion rate
 
     @Test func motionRate() throws {
         var state = try EditState(source: source(20, fps: 30))

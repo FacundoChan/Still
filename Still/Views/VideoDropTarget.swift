@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Accepts videos dragged from Finder (file URLs) and from Photos (file promises; goal.md §5).
+/// Accepts videos dragged from Finder (file URLs) and from Photos (file promises).
 ///
 /// SwiftUI’s drop modifiers don’t resolve file promises, so this AppKit view does. It covers the window
 /// for drags but lets every click through.

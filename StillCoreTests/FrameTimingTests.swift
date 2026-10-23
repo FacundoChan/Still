@@ -57,7 +57,7 @@ struct TimingCase: Sendable, CustomTestStringConvertible {
 
 @Suite("Frame timing", .serialized)
 struct FrameTimingTests {
-    /// Every output frame shows the source frame the time model predicts (goal.md §6 and §7):
+    /// Every output frame shows the source frame the time model predicts:
     /// output frame k at k / 30 s shows source time start + k / 30 × speed.
     @Test(arguments: TimingCase.all)
     func everyFrameShowsThePredictedSourceFrame(_ timing: TimingCase) async throws {

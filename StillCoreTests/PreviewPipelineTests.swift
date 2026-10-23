@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import StillCore
 
-/// The selection preview plays the export's retimed sound (goal.md §2, preview matches export).
+/// The selection preview plays the export's retimed sound.
 @Suite("Preview pipeline", .serialized)
 struct PreviewPipelineTests {
     @MainActor

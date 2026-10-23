@@ -2,7 +2,7 @@ import CoreGraphics
 import CoreMedia
 import Foundation
 
-/// Fixed properties of every rendered output (goal.md §6, §8, §10).
+/// Fixed properties of every rendered output.
 public struct OutputSettings: Sendable, Equatable {
     public enum VideoCodec: Sendable, Equatable {
         case h264
@@ -17,7 +17,7 @@ public struct OutputSettings: Sendable, Equatable {
     /// HEVC, as iPhone uses for its own Live Photos; at the same size it keeps more detail than H.264.
     public var videoCodec: VideoCodec
     /// Average encoded bits per pixel per frame. 0.25 is about 16.6 Mbit/s at 1080 × 1920, 30 fps, and keeps
-    /// about 90% of the fine detail of a 4K iPhone clip (docs/decisions.md, “Video quality measurements”).
+    /// about 90% of the fine detail of a 4K iPhone clip.
     public var bitsPerPixel: Double
     /// Encoder quality from 0 to 1, where the encoder supports it; nil leaves rate control to the bitrate.
     public var encoderQuality: Double?

@@ -5,8 +5,7 @@ import OSLog
 import Photos
 import StillCore
 
-/// Runs one export at a time for an editor window, with stages, cancellation, and recovery
-/// (goal.md §10, “Progress and recovery”).
+/// Runs one export at a time for an editor window, with stages, cancellation, and recovery.
 ///
 /// Every export renders into a private staging folder first. Only a finished, verified pair is handed to
 /// Photos or moved into the user’s folder, so a cancelled or failed export never leaves a partial result
@@ -106,7 +105,7 @@ final class ExportController {
         defer { try? FileManager.default.removeItem(at: staging) }
         do {
             if destination == .photos {
-                // Asking before rendering means a refusal costs the user nothing (goal.md §10, “Save to Photos”).
+                // Asking before rendering means a refusal costs the user nothing.
                 try DebugHooks.simulateFailure(at: .photosAccess)
                 try await PhotosLibrarySaver.ensureAddAccess()
             }
@@ -167,7 +166,7 @@ final class ExportController {
 
     // MARK: - Naming
 
-    /// Development builds name Photos resources so test assets are easy to find (goal.md §10); release
+    /// Development builds name Photos resources so test assets are easy to find; release
     /// builds keep the video’s own name, as iPhone does for a Live Photo’s two resources.
     private static func photosFilename(for sourceName: String) -> String {
         #if DEBUG
@@ -181,7 +180,7 @@ final class ExportController {
     }
 }
 
-/// An export that failed, described for the user with what they can do next (goal.md §10).
+/// An export that failed, described for the user with what they can do next.
 struct ExportFailure: Identifiable {
     enum Recovery: Hashable, Identifiable {
         case tryAgain

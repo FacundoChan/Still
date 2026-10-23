@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A number field that commits on Return or when focus leaves (goal.md §11, numeric alternatives).
+/// A number field that commits on Return or when focus leaves.
 ///
 /// It follows `value` unless the user is partway through typing a different one. After a commit it shows the
 /// value as it then is: the edit's result once it lands, or the old value if the edit was refused.

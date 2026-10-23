@@ -2,7 +2,7 @@ import AVFoundation
 import CoreMedia
 import ImageIO
 
-/// The keys that pair a still image and a movie into one Live Photo (goal.md §10).
+/// The keys that pair a still image and a movie into one Live Photo.
 public enum LivePhotoMetadata {
     /// Top-level QuickTime metadata item holding the content identifier.
     public static let contentIdentifierKey = "com.apple.quicktime.content.identifier"

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Generates the synthetic fixtures described in goal.md §14 into Fixtures/synthetic.
+# Generates the synthetic fixtures listed in Fixtures/README.md into Fixtures/synthetic.
 # Real iPhone recordings live in Fixtures/real and are never generated.
 #
 # Usage: Scripts/make-fixtures.sh [--force]

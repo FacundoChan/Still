@@ -47,7 +47,7 @@ public enum EditRejection: Error, Sendable, Equatable, LocalizedError {
     }
 }
 
-/// The authoritative editing state (goal.md §12) and the rules that change it (§5–§9).
+/// The authoritative editing state and the rules that change it.
 ///
 /// A value type: every edit produces a complete new state, which makes undo a stack of snapshots.
 /// Times are source seconds unless a name says “output”.
@@ -74,7 +74,7 @@ public struct EditState: Sendable, Equatable {
     public private(set) var cropRect: CGRect
     public private(set) var includesAudio: Bool
 
-    /// The initial editing state for a newly opened source (goal.md §5).
+    /// The initial editing state for a newly opened source.
     public init(source: SourceInfo, output: OutputSettings = .standard) throws {
         guard source.duration >= Self.minimumSourceDuration - Self.tolerance else {
             throw EditRejection.sourceTooShort(seconds: source.duration, minimum: Self.minimumSourceDuration)
@@ -199,7 +199,7 @@ public struct EditState: Sendable, Equatable {
 
     // MARK: - Moment and Key Photo
 
-    /// Make Key Photo (goal.md §7). Inside the selection, the Key Photo moves to `time` and the selection
+    /// Make Key Photo. Inside the selection, the Key Photo moves to `time` and the selection
     /// stays where it is. Outside it, the selection first comes to `time`, centering on it.
     public mutating func makeKeyPhoto(at time: Double) {
         if isInsideSelection(time) {

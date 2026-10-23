@@ -33,7 +33,7 @@ public enum LivePhotoExportError: Error, LocalizedError {
     }
 }
 
-/// Where an export is, for in-window progress (goal.md §10, “Progress and recovery”).
+/// Where an export is, for in-window progress.
 public enum LivePhotoExportStage: Sendable, Equatable {
     /// Building the composition and retiming the sound.
     case preparing
@@ -149,8 +149,7 @@ public struct LivePhotoExporter: Sendable {
         }
     }
 
-    /// Moves a rendered pair into a new folder, as one unit: the folder appears with both files or not at all
-    /// (goal.md §10, “Export Files”).
+    /// Moves a rendered pair into a new folder, as one unit: the folder appears with both files or not at all.
     ///
     /// Fails without touching anything if `folder` already exists.
     public func deliver(_ pair: LivePhotoPair, toNewFolder folder: URL) throws -> LivePhotoPair {

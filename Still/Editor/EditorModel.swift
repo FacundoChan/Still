@@ -182,7 +182,7 @@ final class EditorModel {
         didCommit(from: current)
     }
 
-    /// Starts a continuous gesture; everything until `endInteraction` is one undo step (goal.md §11).
+    /// Starts a continuous gesture; everything until `endInteraction` is one undo step.
     func beginInteraction() {
         if interactionStart == nil { interactionStart = state }
     }
@@ -230,7 +230,7 @@ final class EditorModel {
 
     // MARK: - Commands
 
-    /// Make Key Photo (goal.md §7): the playhead’s frame becomes the Key Photo, and the selection comes to it
+    /// Make Key Photo: the playhead’s frame becomes the Key Photo, and the selection comes to it
     /// if it is outside.
     func makeKeyPhoto() {
         edit("Make Key Photo") { $0.makeKeyPhoto(at: playhead) }
@@ -297,7 +297,7 @@ final class EditorModel {
         edit(include ? "Turn Sound On" : "Turn Sound Off") { $0.setIncludesAudio(include) }
     }
 
-    /// Choosing a ratio enters Crop mode (goal.md §8).
+    /// Choosing a ratio enters Crop mode.
     func setCropAspect(_ aspect: CropAspect) {
         edit("Change Crop Ratio") { try $0.setCropAspect(aspect) }
         isCropMode = true
@@ -373,7 +373,7 @@ final class EditorModel {
         livePreview.play()
     }
 
-    // MARK: - Keyboard (goal.md §11)
+    // MARK: - Keyboard
 
     /// Single-key shortcuts arrive here only when no text field has focus, so they never fire while typing.
     func handleKey(_ press: KeyPress) -> Bool {
@@ -475,7 +475,7 @@ final class EditorModel {
         previewAudioURL = wroteAudio ? audioURL : nil
     }
 
-    // MARK: - Export (goal.md §5, “Saving and exporting”; §10)
+    // MARK: - Export
 
     func saveToPhotos() {
         guard canExport, let state else { return }
@@ -538,7 +538,7 @@ final class EditorModel {
         let response = if let window { await panel.beginSheetModal(for: window) } else { await panel.begin() }
         withExtendedLifetime(validator) {}
         guard response == .OK, let folder = panel.url else { return nil }
-        // Still never replaces files (goal.md §10), even when the panel offered to.
+        // Still never replaces files, even when the panel offered to.
         if FileManager.default.fileExists(atPath: folder.path) {
             export.failure = ExportFailure(
                 destination: .folder(folder),
@@ -566,7 +566,7 @@ final class EditorModel {
 
     private static let photosPrivacySettings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")!
 
-    // MARK: - Closing (goal.md §5, “Windows”)
+    // MARK: - Closing
 
     /// Closing needs the user’s say while edits are unsaved or an export is running.
     var needsCloseConfirmation: Bool {

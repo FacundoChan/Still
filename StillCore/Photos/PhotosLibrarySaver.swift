@@ -41,7 +41,7 @@ public enum PhotosLibrarySaver {
     /// Once this starts, the save can’t be called back: Photos either creates the asset or reports an error.
     ///
     /// - Parameter originalFilename: base name Photos records for both resources. During development
-    ///   pass a `StillTest-` prefix so test assets are easy to find (goal.md §10).
+    ///   pass a `StillTest-` prefix so test assets are easy to find.
     public static func save(_ pair: LivePhotoPair, originalFilename: String) async throws {
         try await ensureAddAccess()
 

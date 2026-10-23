@@ -1,7 +1,7 @@
 import AVFoundation
 import Observation
 
-/// Two players behind the stage (goal.md §11, Space):
+/// Two players behind the stage:
 /// - the source player shows the whole video at 1× for scrubbing, and plays it outside the selection;
 /// - the selection player plays the selection as it will export: speed applied, looping.
 ///

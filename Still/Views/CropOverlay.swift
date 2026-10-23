@@ -1,7 +1,7 @@
 import StillCore
 import SwiftUI
 
-/// Crop mode on the stage: the full frame with everything outside the crop dimmed (goal.md §8).
+/// Crop mode on the stage: the full frame with everything outside the crop dimmed.
 /// Drag inside to move; drag a handle to resize. Fixed ratios resize from the corners only.
 struct CropOverlay: View {
     @Bindable var model: EditorModel

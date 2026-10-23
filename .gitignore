@@ -14,3 +14,7 @@ Fixtures/synthetic/
 Fixtures/real/*.mov
 
 .DS_Store
+
+# Working notes kept locally: the product spec, decision log, acceptance report and manual checklist
+goal.md
+docs/*.md

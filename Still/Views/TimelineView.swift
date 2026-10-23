@@ -1,8 +1,7 @@
 import StillCore
 import SwiftUI
 
-/// The bottom timeline: transport, a zoomed detail strip, the whole-source overview, and a summary
-/// (goal.md §6, “Timeline layout”).
+/// The bottom timeline: transport, a zoomed detail strip, the whole-source overview, and a summary.
 struct TimelineView: View {
     @Bindable var model: EditorModel
 
@@ -102,7 +101,7 @@ struct BracketButton: View {
 }
 
 /// Above the detail strip: a dot marks the Key Photo, and a Make Key Photo bubble points at the playhead
-/// whenever it rests on another frame, as in Photos on iPhone (goal.md §7).
+/// whenever it rests on another frame, as in Photos on iPhone.
 struct KeyPhotoLane: View {
     @Bindable var model: EditorModel
     @Environment(\.colorScheme) private var colorScheme

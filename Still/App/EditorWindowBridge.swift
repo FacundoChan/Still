@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Connects an editor to the window SwiftUI hosts it in: sheets, the unsaved-edits dot in the close button,
-/// and confirmation before closing (goal.md §5, “Windows”).
+/// and confirmation before closing.
 struct EditorWindowBridge: NSViewRepresentable {
     let model: EditorModel
     let isEdited: Bool

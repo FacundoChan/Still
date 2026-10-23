@@ -1,7 +1,6 @@
 import Foundation
 
-/// The app’s scratch folders inside its sandbox temporary directory (goal.md §12, “Clean up temporary
-/// resources”).
+/// The app’s scratch folders inside its sandbox temporary directory.
 ///
 /// Each window removes its own files as it goes; launch removes whatever a crash or forced quit left behind.
 nonisolated enum TemporaryFiles {

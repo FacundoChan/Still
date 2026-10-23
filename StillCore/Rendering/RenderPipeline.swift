@@ -69,7 +69,7 @@ public enum RenderPipelineError: Error, LocalizedError {
     }
 }
 
-/// The single builder behind preview and export (goal.md §12, “One render pipeline”).
+/// The single builder behind preview and export.
 public enum RenderPipeline {
     public static func build(source: SourceMedia, plan: EditPlan) throws -> RenderGraph {
         try build(source: source, plan: plan, retimedAudio: nil)

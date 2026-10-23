@@ -160,7 +160,7 @@ struct PlayerView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> AVPlayerView {
         // Referencing AVPlayerView directly links AVKit. SwiftUI's VideoPlayer crashes on macOS 27.0
-        // when nothing else loads AVKit (docs/decisions.md).
+        // when nothing else loads AVKit.
         let view = AVPlayerView()
         view.controlsStyle = .none
         view.videoGravity = .resizeAspect

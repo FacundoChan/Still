@@ -12,7 +12,7 @@ iPhone 17 Pro Max recordings (iOS 27.2) supplied by the owner, renamed from the 
 
 These files contain GPS location metadata. They are excluded from version control by `.gitignore`; think before publishing them.
 
-Still missing from goal.md §14: a real **240 fps slow-motion** clip and a real **landscape** clip. Validation that depends on them is outstanding.
+Still missing: a real **240 fps slow-motion** clip and a real **landscape** clip. Validation that depends on them is outstanding.
 
 ## Synthetic (`synthetic/`)
 

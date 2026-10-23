@@ -41,7 +41,7 @@ extension Fixture {
     static let portrait = CGSize(width: 1080, height: 1920)
     static let landscape = CGSize(width: 1920, height: 1080)
 
-    /// Landscape, portrait, rotated, silent, and HDR sources (goal.md §13, Goal A).
+    /// Landscape, portrait, rotated, silent, and HDR sources.
     static let goalA: [Fixture] = [
         Fixture(name: "landscape-sdr-30fps-6s.mov", kind: .synthetic, expectedSize: landscape, hasAudio: true, selectionStart: 1),
         Fixture(name: "silent-landscape-30fps-4s.mov", kind: .synthetic, expectedSize: landscape, hasAudio: false, selectionStart: 0.5),

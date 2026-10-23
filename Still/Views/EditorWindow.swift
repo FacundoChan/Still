@@ -16,7 +16,7 @@ struct EditorWindow: View {
 
     var body: some View {
         content
-            // With the toolbar and the inspector, the window bottoms out at about 900 × 640 (goal.md §4).
+            // With the toolbar and the inspector, the window bottoms out at about 900 × 640.
             .frame(minWidth: 614, minHeight: 588)
             .overlay {
                 VideoDropTarget(isTargeted: $isDropTargeted) { url in
@@ -92,7 +92,7 @@ struct EditorWindow: View {
     }
 }
 
-/// The quiet drop target shown before a video is open (goal.md §5).
+/// The quiet drop target shown before a video is open.
 struct EmptyStateView: View {
     @Bindable var model: EditorModel
     let isDropTargeted: Bool
@@ -168,7 +168,7 @@ struct EditorToolbar: ToolbarContent {
 }
 
 /// Takes the Save button’s place while exporting: the stage, overall progress, and Cancel while the stage
-/// can still be cancelled (goal.md §10, “Progress and recovery”).
+/// can still be cancelled.
 struct ExportProgressView: View {
     var export: ExportController
 

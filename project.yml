@@ -12,7 +12,7 @@ settings:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "26.0"
     # Signed with the owner's team, so macOS keeps one identity across rebuilds and asks for Photos access
-    # once (goal.md §12). Release builds for distribution override the identity with Developer ID
+    # once. Release builds for distribution override the identity with Developer ID
     # (Scripts/package.sh). Nothing here needs a provisioning profile.
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "Apple Development"
@@ -48,7 +48,7 @@ targets:
     info:
       path: Still/Info.plist
       properties:
-        # Lets Finder's Open With and the Dock icon hand videos to the app (goal.md §5).
+        # Lets Finder's Open With and the Dock icon hand videos to the app.
         CFBundleDocumentTypes:
           - CFBundleTypeName: Movie
             CFBundleTypeRole: Viewer

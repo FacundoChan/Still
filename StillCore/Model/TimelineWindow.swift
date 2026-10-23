@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the two timeline strips show (goal.md §6, “Timeline layout”).
+/// What the two timeline strips show.
 public enum TimelineWindow {
     /// Sources up to this long fit the detail strip, which then shows alone.
     public static let singleStripThreshold = 8.0

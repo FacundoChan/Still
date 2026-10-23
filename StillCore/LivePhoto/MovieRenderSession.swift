@@ -192,7 +192,7 @@ final class MovieRenderSession: @unchecked Sendable {
 
     /// The compositor emits a frame only when the picture changes, so slowed clips arrive at the source’s
     /// cadence rather than 30 fps. Each frame is re-stamped onto the constant-rate grid, and the previous
-    /// frame repeats in any slot the compositor skipped (goal.md §6, constant output frame rate).
+    /// frame repeats in any slot the compositor skipped.
     ///
     /// Returns false once every output frame has been queued.
     private func queueNextFrames() -> Bool {

@@ -3,8 +3,8 @@ import Synchronization
 import Testing
 @testable import StillCore
 
-/// Cancelled or failed exports leave nothing that looks like a finished Live Photo (goal.md §14),
-/// and progress moves through the documented stages (goal.md §10).
+/// Cancelled or failed exports leave nothing that looks like a finished Live Photo,
+/// and progress moves through the documented stages.
 @Suite("Export recovery", .serialized)
 struct ExportRecoveryTests {
     private static let fixture = Fixture.goalA[0]
