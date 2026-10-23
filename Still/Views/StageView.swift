@@ -52,8 +52,11 @@ struct StageView: View {
             ZStack(alignment: .topLeading) {
                 Color.clear
 
-                player(model.playback.sourcePlayer, in: frame)
-                    .opacity(model.playback.showsSelectionPlayer ? 0 : 1)
+                // The source pair takes turns; the one behind loads a new item without blanking the stage.
+                ForEach(model.playback.sourcePlayers.indices, id: \.self) { index in
+                    player(model.playback.sourcePlayers[index], in: frame)
+                        .opacity(!model.playback.showsSelectionPlayer && index == model.playback.activeSource ? 1 : 0)
+                }
                 player(model.playback.selectionPlayer, in: frame)
                     .opacity(model.playback.showsSelectionPlayer ? 1 : 0)
 

@@ -6,10 +6,17 @@ import Observation
 /// - the selection player plays the selection as it will export: speed applied, looping.
 ///
 /// Both render through the export pipeline, so crop and color always match the export.
+///
+/// The source player is a pair that takes turns: a new item, such as the full frame for Crop mode, loads in the
+/// one behind and comes forward once it shows the playhead's frame. Replacing the item of the player on screen
+/// blanked it until the new item had decoded a frame.
 @Observable
 final class PlaybackController {
-    let sourcePlayer = AVPlayer()
+    let sourcePlayers = [AVPlayer(), AVPlayer()]
+    private(set) var activeSource = 0
     let selectionPlayer = AVPlayer()
+
+    var sourcePlayer: AVPlayer { sourcePlayers[activeSource] }
 
     private(set) var isPlaying = false
     private(set) var showsSelectionPlayer = false
@@ -26,12 +33,16 @@ final class PlaybackController {
     @ObservationIgnored private var seekGeneration = 0
     /// Set after pausing the selection: show the source player once it has reached the paused frame.
     @ObservationIgnored private var revealsSourceAfterSeek = false
+    /// Counts source items, so only the latest one comes forward.
+    @ObservationIgnored private var itemGeneration = 0
+    /// The source time most recently asked for, which a source item coming forward must show.
+    @ObservationIgnored private var requestedSourceTime = 0.0
 
     init() {
-        sourcePlayer.actionAtItemEnd = .pause
+        for player in sourcePlayers { player.actionAtItemEnd = .pause }
         selectionPlayer.actionAtItemEnd = .none
         let interval = CMTime(value: 1, timescale: 60)
-        for player in [sourcePlayer, selectionPlayer] {
+        for player in sourcePlayers + [selectionPlayer] {
             let token = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
                 MainActor.assumeIsolated { self?.playerTimeChanged(player, time: time) }
             }
@@ -47,9 +58,34 @@ final class PlaybackController {
 
     // MARK: - Items
 
+    /// Loads `item` behind the source player on screen, and brings it forward once it shows `time`.
     func setSourceItem(_ item: AVPlayerItem, showing time: Double) {
-        sourcePlayer.replaceCurrentItem(with: item)
-        seekSource(to: time)
+        itemGeneration += 1
+        let generation = itemGeneration
+        let standby = sourcePlayers[1 - activeSource]
+        standby.pause()
+        standby.replaceCurrentItem(with: item)
+        requestedSourceTime = time
+        standby.seek(to: Self.time(time), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard finished else { return }
+            Task { @MainActor [weak self] in self?.bringSourceForward(generation, showing: time) }
+        }
+    }
+
+    private func bringSourceForward(_ generation: Int, showing time: Double) {
+        guard generation == itemGeneration else { return }
+        let previous = sourcePlayer
+        let playingSource = isPlaying && !showsSelectionPlayer
+        activeSource = 1 - activeSource
+        // The old player keeps its item, out of sight, until the next swap reuses it.
+        previous.pause()
+        if playingSource {
+            sourcePlayer.seek(to: previous.currentTime(), toleranceBefore: .zero, toleranceAfter: .zero)
+            sourcePlayer.play()
+        } else if abs(requestedSourceTime - time) > 1e-6 {
+            // The playhead moved while the item loaded.
+            seekSource(to: requestedSourceTime)
+        }
     }
 
     func setSelectionItem(_ item: AVPlayerItem, start: Double, speed: Double) {
@@ -102,7 +138,7 @@ final class PlaybackController {
     /// source player's older frame for a moment.
     func pause() {
         guard isPlaying else { return }
-        sourcePlayer.pause()
+        for player in sourcePlayers { player.pause() }
         selectionPlayer.pause()
         isPlaying = false
         guard showsSelectionPlayer else {
@@ -131,7 +167,7 @@ final class PlaybackController {
         timeObservers.removeAll()
         endObservers.forEach(NotificationCenter.default.removeObserver)
         endObservers.removeAll()
-        sourcePlayer.replaceCurrentItem(with: nil)
+        for player in sourcePlayers { player.replaceCurrentItem(with: nil) }
         selectionPlayer.replaceCurrentItem(with: nil)
         hasSelectionItem = false
     }
@@ -149,10 +185,15 @@ final class PlaybackController {
 
     // MARK: - Observation
 
+    private static func time(_ seconds: Double) -> CMTime {
+        CMTime(seconds: seconds, preferredTimescale: 60_000)
+    }
+
     private func seekSource(to time: Double) {
         seekGeneration += 1
         let generation = seekGeneration
-        sourcePlayer.seek(to: CMTime(seconds: time, preferredTimescale: 60_000), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+        requestedSourceTime = time
+        sourcePlayer.seek(to: Self.time(time), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             guard finished else { return }
             Task { @MainActor [weak self] in self?.sourceSeekFinished(generation) }
         }

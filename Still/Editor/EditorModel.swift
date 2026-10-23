@@ -65,6 +65,8 @@ final class EditorModel {
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
     @ObservationIgnored private var selectionPreviewTask: Task<Void, Never>?
     @ObservationIgnored private var previewAudioURL: URL?
+    /// What the source player shows, so an unchanged preview isn't rebuilt.
+    @ObservationIgnored private var sourcePreviewPlan: EditPlan?
 
     init() {
         playback.onPlaybackTime = { [weak self] time in
@@ -133,6 +135,7 @@ final class EditorModel {
             state = initial
             savedState = initial
             playhead = 0
+            sourcePreviewPlan = nil
             detailFollowsPlayhead = true
             isCropMode = false
             undoManager?.removeAllActions()
@@ -235,14 +238,16 @@ final class EditorModel {
 
     private func didCommit(from previous: EditState) {
         guard let state else { return }
-        if previous.cropRect != state.cropRect && !isCropMode {
+        let colorChanged = previous.output.dynamicRange != state.output.dynamicRange
+        if (previous.cropRect != state.cropRect && !isCropMode) || colorChanged {
             refreshSourcePreview()
         }
-        // The stage previews at a fixed size, so a new resolution or bit rate changes only the Live Photo
-        // preview, and playback carries on.
+        // The stage previews at a fixed size, so a new resolution, bit rate or location changes only the Live Photo
+        // preview, and playback carries on. HDR changes what the stage shows.
         var unchanged = previous.plan
         unchanged.output = state.output
-        scheduleRenders(includingSelection: unchanged != state.plan)
+        unchanged.location = state.plan.location
+        scheduleRenders(includingSelection: unchanged != state.plan || colorChanged)
     }
 
     // MARK: - Commands
@@ -516,7 +521,10 @@ final class EditorModel {
             crop: isCropMode ? CropGeometry.fullFrame : state.cropRect,
             output: output
         )
-        guard let graph = try? RenderPipeline.build(source: source, plan: plan) else { return }
+        // Uncropped, Crop mode's full frame is the same picture, so there's nothing to rebuild.
+        guard plan != sourcePreviewPlan,
+              let graph = try? RenderPipeline.build(source: source, plan: plan) else { return }
+        sourcePreviewPlan = plan
         playback.setSourceItem(graph.makePlayerItem(), showing: playhead)
     }
 
