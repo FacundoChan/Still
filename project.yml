@@ -11,7 +11,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MACOSX_DEPLOYMENT_TARGET: "26.0"
-    # Signed with the owner's team, so macOS keeps one identity across rebuilds and asks for Photos access
+    # Signed with the maintainer's team, so macOS keeps one identity across rebuilds and asks for Photos access
     # once. Release builds for distribution override the identity with Developer ID
     # (Scripts/package.sh). Nothing here needs a provisioning profile.
     CODE_SIGN_STYLE: Manual

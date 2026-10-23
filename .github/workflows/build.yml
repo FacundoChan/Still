@@ -53,7 +53,7 @@ jobs:
       - name: Test
         run: |
           xcodegen generate
-          # No certificate on the runner: sign ad hoc. The owner's iPhone clips aren't in the repository,
+          # No certificate on the runner: sign ad hoc. The iPhone clips aren't in the repository,
           # so their test cases are skipped here.
           set -o pipefail
           mkdir -p build

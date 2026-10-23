@@ -2,7 +2,7 @@ import Foundation
 import Testing
 
 /// Test media in `Fixtures/`. Synthetic files come from `Scripts/make-fixtures.sh`;
-/// real files are iPhone recordings supplied by the project owner.
+/// real files are iPhone recordings, kept out of the repository.
 struct Fixture: Sendable, CustomTestStringConvertible {
     enum Kind: String, Sendable { case real, synthetic }
 
@@ -20,8 +20,8 @@ struct Fixture: Sendable, CustomTestStringConvertible {
 
     var testDescription: String { name }
 
-    /// The owner's iPhone clips aren't in the repository (they carry GPS metadata), so tests that need them
-    /// run only where they exist, such as the owner's Mac; CI runs the synthetic cases.
+    /// The iPhone clips aren't in the repository (they carry location metadata), so tests that need them run
+    /// only where they exist; CI runs the synthetic cases.
     var isAvailable: Bool { Self.isAvailable(url) }
 
     static func isAvailable(_ url: URL) -> Bool {

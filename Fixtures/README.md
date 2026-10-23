@@ -2,17 +2,15 @@
 
 ## Real (`real/`)
 
-iPhone 17 Pro Max recordings (iOS 27.2) supplied by the owner, renamed from the camera’s file names.
+iPhone recordings. They aren't in the repository: they're large and contain location metadata. Tests that need them are skipped when they're missing.
 
-| File | Original | Video | Audio |
-|---|---|---|---|
-| `portrait-sdr-h264-30fps-4.8s.mov` | IMG_4077.MOV | 1920×1080 H.264, SDR Rec. 709, ~30 fps (variable), rotation −90° | AAC stereo 44.1 kHz |
-| `portrait-hdr-dolbyvision-60fps-3.3s.mov` | IMG_4078.MOV | 3840×2160 HEVC Main 10, HLG, Dolby Vision 8.4, 60 fps, rotation −90° | AAC stereo + 4-channel spatial track |
-| `portrait-hdr-dolbyvision-59.94fps-5.1s.mov` | IMG_4079.MOV | 3840×2160 HEVC Main 10, HLG, Dolby Vision 8.4, 59.94 fps, rotation −90° | AAC stereo + 4-channel spatial track |
+| File | Video | Audio |
+|---|---|---|
+| `portrait-sdr-h264-30fps-4.8s.mov` | 1920×1080 H.264, SDR Rec. 709, ~30 fps (variable), rotation −90° | AAC stereo 44.1 kHz |
+| `portrait-hdr-dolbyvision-60fps-3.3s.mov` | 3840×2160 HEVC Main 10, HLG, Dolby Vision 8.4, 60 fps, rotation −90° | AAC stereo + 4-channel spatial track |
+| `portrait-hdr-dolbyvision-59.94fps-5.1s.mov` | 3840×2160 HEVC Main 10, HLG, Dolby Vision 8.4, 59.94 fps, rotation −90° | AAC stereo + 4-channel spatial track |
 
-These files contain GPS location metadata. They are excluded from version control by `.gitignore`; think before publishing them.
-
-Still missing: a real **240 fps slow-motion** clip and a real **landscape** clip. Validation that depends on them is outstanding.
+Not yet covered by a real clip: 240 fps slow motion and landscape.
 
 ## Synthetic (`synthetic/`)
 

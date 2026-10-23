@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
-    /// Each window is one video; with none left, Still has nothing to show (the owner's choice).
+    /// Each window is one video; with none left, Still has nothing to show, so it quits.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
