@@ -68,7 +68,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Still
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.photography
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: Still saves the Live Photos you create to your Photos library.
-        MARKETING_VERSION: "0.1.0"
+        MARKETING_VERSION: "0.1.1"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
       configs:
