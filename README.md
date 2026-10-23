@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/editor.webp" width="880" alt="Still's editor: a coastline video on the stage, yellow trim brackets on both timeline strips with a Make Key Photo bubble, and the inspector with speed, duration, crop, sound, and Key Photo controls">
+  <img src="docs/images/editor.webp" width="880" alt="Still's editor: a coastline video on the stage, yellow trim brackets on both timeline strips with a Make Key Photo bubble, and the inspector's Output tab with resolution, bit rate, HDR, sound, the estimated size, and the location on a map">
 </p>
 
 ## Features
