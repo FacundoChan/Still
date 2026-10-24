@@ -1,6 +1,9 @@
 # Build output, including test exports in build/test-output
 build/
 DerivedData/
+# Swift package builds (Package.swift)
+.build/
+.swiftpm/
 *.xcuserstate
 xcuserdata/
 
