@@ -104,8 +104,10 @@ To install your build as `/Applications/Still.app`, run `Scripts/install.sh`.
 | Path | Contents |
 |---|---|
 | [`StillCore/`](StillCore) | Framework: editing model, render pipeline, Live Photo export and inspection, Photos saving |
-| [`Still/App`](Still/App) | App entry, window routing, close and quit confirmation, temporary files |
-| [`Still/Editor`](Still/Editor) | Per-window model: editing, undo, playback, background renders, export stages and recovery |
+| [`StillEditor/`](StillEditor) | Framework: the per-window editor: editing, undo, playback, background renders, export stages and recovery, temporary files |
+| [`Package.swift`](Package.swift) | StillCore and StillEditor as a Swift package, for the iOS app |
+| [`Still/App`](Still/App) | App entry, window routing, quit confirmation |
+| [`Still/Editor`](Still/Editor) | The editor's Mac side: export panel, close confirmation, System Settings |
 | [`Still/Views`](Still/Views) | Stage, crop overlay, timeline, inspector, drop target |
 | [`Still/AppIcon.icon`](Still/AppIcon.icon) | App icon, an Icon Composer file with SVG layers |
 | [`StillCoreTests/`](StillCoreTests) | Tests |

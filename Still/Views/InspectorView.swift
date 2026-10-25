@@ -1,5 +1,6 @@
 import AppKit
 import StillCore
+import StillEditor
 import SwiftUI
 
 /// Two tabs: Edit (speed, duration, crop, Key Photo) for shaping the moment, and Output (resolution, bit rate,
@@ -239,7 +240,8 @@ struct InspectorView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.secondary.opacity(0.12))
             if let image = model.livePreview.keyPhoto {
-                Image(nsImage: image)
+                // Through NSImage, which shows an HDR Key Photo as HDR.
+                Image(nsImage: NSImage(cgImage: image, size: .zero))
                     .resizable()
                     .allowedDynamicRange(.high)
                     .aspectRatio(contentMode: .fit)

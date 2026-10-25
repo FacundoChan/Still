@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import StillEditor
 import SwiftUI
 
 /// Identifies an editor window and what it should do when it first appears.
@@ -138,7 +139,7 @@ final class WindowCoordinator {
             }
         }
         for editor in pending {
-            editor.window?.makeKeyAndOrderFront(nil)
+            editor.hostWindow?.makeKeyAndOrderFront(nil)
             guard await editor.confirmClose(quitting: true) else { return false }
         }
         return true

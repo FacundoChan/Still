@@ -1,4 +1,5 @@
 import StillCore
+import StillEditor
 import SwiftUI
 
 /// The bottom timeline: transport, a zoomed detail strip, the whole-source overview, and a summary.
@@ -301,7 +302,7 @@ struct TimelineStrip: View {
         ZStack(alignment: .topLeading) {
             Rectangle().fill(Color.secondary.opacity(0.15))
             ForEach(model.thumbnails.thumbnails(strip, in: range)) { thumbnail in
-                Image(nsImage: thumbnail.image)
+                Image(decorative: thumbnail.image, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: CGFloat(thumbnail.slot.span * scale.pointsPerSecond) + 0.5, height: height)

@@ -1,4 +1,5 @@
 import StillCore
+import StillEditor
 import SwiftUI
 
 /// Crop mode on the stage: the full frame with everything outside the crop dimmed.

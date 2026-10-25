@@ -1,4 +1,3 @@
-import AppKit
 import AVFoundation
 import Observation
 import StillCore
@@ -11,29 +10,29 @@ import StillCore
 /// These are only for orientation on the timeline. The Key Photo thumbnail comes from the preview render
 /// instead, because the image generator tone-maps Dolby Vision differently from the export.
 @Observable
-final class ThumbnailProvider {
-    enum Strip { case detail, overview }
+public final class ThumbnailProvider {
+    public enum Strip { case detail, overview }
 
     /// One cell of the grid. Levels step the cell's length in quarter octaves, so a slightly longer or shorter
     /// range usually keeps the same cells.
-    struct Slot: Hashable {
-        let level: Int
-        let index: Int
+    public struct Slot: Hashable {
+        public let level: Int
+        public let index: Int
 
-        var span: Double { ThumbnailProvider.span(ofLevel: level) }
-        var start: Double { Double(index) * span }
+        public var span: Double { ThumbnailProvider.span(ofLevel: level) }
+        public var start: Double { Double(index) * span }
     }
 
-    struct Thumbnail: Identifiable {
-        let slot: Slot
-        let image: NSImage
-        var id: Slot { slot }
+    public struct Thumbnail: Identifiable {
+        public let slot: Slot
+        public let image: CGImage
+        public var id: Slot { slot }
     }
 
     /// Enough for both strips' current images and a few previous zoom levels.
     private static let capacity = 120
 
-    private var images: [Slot: NSImage] = [:]
+    private var images: [Slot: CGImage] = [:]
     private var levels: [Strip: Int] = [:]
 
     @ObservationIgnored private var shown: [Strip: [Slot]] = [:]
@@ -41,8 +40,10 @@ final class ThumbnailProvider {
     @ObservationIgnored private var useCount = 0
     @ObservationIgnored private var tasks: [Strip: Task<Void, Never>] = [:]
 
+    public init() {}
+
     /// Loads what `strip` needs to show `range`, with each image covering about `thumbnailSpan` seconds.
-    func load(_ strip: Strip, source: SourceMedia, range: ClosedRange<Double>, thumbnailSpan: Double) {
+    public func load(_ strip: Strip, source: SourceMedia, range: ClosedRange<Double>, thumbnailSpan: Double) {
         guard thumbnailSpan.isFinite, thumbnailSpan > 0 else { return }
         let level = Int((log2(thumbnailSpan) * 4).rounded())
         let slots = Self.slots(covering: range, level: level)
@@ -59,7 +60,7 @@ final class ThumbnailProvider {
 
     /// The images for `strip` across `range`. Until all of them have loaded, images from other zoom levels
     /// fill the gaps underneath, so the strip never goes blank.
-    func thumbnails(_ strip: Strip, in range: ClosedRange<Double>) -> [Thumbnail] {
+    public func thumbnails(_ strip: Strip, in range: ClosedRange<Double>) -> [Thumbnail] {
         guard let level = levels[strip] else { return [] }
         let slots = Self.slots(covering: range, level: level)
         let current = slots.compactMap { slot in images[slot].map { Thumbnail(slot: slot, image: $0) } }
@@ -75,7 +76,7 @@ final class ThumbnailProvider {
         return standIns + current
     }
 
-    func reset() {
+    public func reset() {
         for task in tasks.values { task.cancel() }
         tasks = [:]
         images = [:]
@@ -111,12 +112,12 @@ final class ThumbnailProvider {
                 guard !Task.isCancelled else { return }
                 guard let image = try? result.image,
                       let index = requested.firstIndex(of: result.requestedTime) else { continue }
-                store(NSImage(cgImage: image, size: CGSize(width: image.width, height: image.height)), for: slots[index])
+                store(image, for: slots[index])
             }
         }
     }
 
-    private func store(_ image: NSImage, for slot: Slot) {
+    private func store(_ image: CGImage, for slot: Slot) {
         images[slot] = image
         guard images.count > Self.capacity else { return }
         // Drop the images used longest ago, never ones a strip is showing.

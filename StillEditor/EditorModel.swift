@@ -1,4 +1,3 @@
-import AppKit
 import AVFoundation
 import Observation
 import PhotosUI
@@ -7,34 +6,34 @@ import SwiftUI
 
 /// One editor window’s state: the source, the authoritative `EditState`, undo, playback, and export.
 @Observable
-final class EditorModel {
-    enum Phase: Equatable {
+public final class EditorModel {
+    public enum Phase: Equatable {
         case empty
         case loading
         case ready
         case failed(String)
     }
 
-    private(set) var phase = Phase.empty
-    private(set) var source: SourceMedia?
-    private(set) var sourceName = ""
-    private(set) var state: EditState?
+    public private(set) var phase = Phase.empty
+    public private(set) var source: SourceMedia?
+    public private(set) var sourceName = ""
+    public private(set) var state: EditState?
     /// Source seconds.
-    private(set) var playhead = 0.0
-    private(set) var notice: String?
+    public private(set) var playhead = 0.0
+    public private(set) var notice: String?
     /// The edit as it was when the video opened or was last saved or exported.
-    private(set) var savedState: EditState?
+    public private(set) var savedState: EditState?
 
-    var isCropMode = false {
+    public var isCropMode = false {
         didSet {
             guard isCropMode != oldValue else { return }
             refreshSourcePreview()
         }
     }
 
-    var isImporterPresented = false
-    var isPhotosPickerPresented = false
-    var photosSelection: PhotosPickerItem? {
+    public var isImporterPresented = false
+    public var isPhotosPickerPresented = false
+    public var photosSelection: PhotosPickerItem? {
         didSet {
             guard let item = photosSelection else { return }
             photosSelection = nil
@@ -43,22 +42,25 @@ final class EditorModel {
     }
 
     /// The detail strip’s range while a drag holds it still, so the strip doesn’t slide under the pointer.
-    var frozenDetailRange: ClosedRange<Double>?
+    public var frozenDetailRange: ClosedRange<Double>?
 
     /// Whether the detail strip follows the playhead out of the selection's neighborhood. It follows what the
     /// user moved last: the playhead, by scrubbing, stepping or playing, or the selection, by moving or
     /// trimming it in either strip.
-    private(set) var detailFollowsPlayhead = true
+    public private(set) var detailFollowsPlayhead = true
 
-    let playback = PlaybackController()
-    let livePreview = LivePhotoPreviewRenderer()
-    let thumbnails = ThumbnailProvider()
-    let export = ExportController()
+    public let playback = PlaybackController()
+    public let livePreview = LivePhotoPreviewRenderer()
+    public let thumbnails = ThumbnailProvider()
+    public let export = ExportController()
 
-    @ObservationIgnored weak var undoManager: UndoManager?
-    @ObservationIgnored weak var coordinator: WindowCoordinator?
-    /// The window showing this editor, for sheets.
-    @ObservationIgnored weak var window: NSWindow?
+    @ObservationIgnored public weak var undoManager: UndoManager?
+    /// Where a video chosen in this editor goes. The Mac app routes it to an empty window or a new one; without
+    /// a handler, this editor opens it.
+    @ObservationIgnored public var openVideo: ((URL) -> Void)?
+    /// The window showing this editor, for sheets and focus. Typed loosely so the model needs neither AppKit
+    /// nor UIKit; each app casts it to its own window type.
+    @ObservationIgnored public weak var window: AnyObject?
     @ObservationIgnored private var interactionStart: EditState?
     @ObservationIgnored private var interactionNotice: EditNotice?
     @ObservationIgnored private var accessedURL: URL?
@@ -68,7 +70,7 @@ final class EditorModel {
     /// What the source player shows, so an unchanged preview isn't rebuilt.
     @ObservationIgnored private var sourcePreviewPlan: EditPlan?
 
-    init() {
+    public init() {
         playback.onPlaybackTime = { [weak self] time in
             self?.playhead = time
             self?.followPlayhead()
@@ -77,16 +79,16 @@ final class EditorModel {
 
     // MARK: - Derived
 
-    var isEmpty: Bool {
+    public var isEmpty: Bool {
         switch phase {
         case .empty, .failed: true
         case .loading, .ready: false
         }
     }
 
-    var title: String { sourceName.isEmpty ? "Still" : sourceName }
+    public var title: String { sourceName.isEmpty ? "Still" : sourceName }
 
-    var subtitle: String {
+    public var subtitle: String {
         guard let source else { return "" }
         let seconds = Int(source.duration.seconds.rounded())
         let fps = Double(source.nominalFrameRate)
@@ -94,22 +96,22 @@ final class EditorModel {
         return String(format: "%d:%02d · %@ fps", seconds / 60, seconds % 60, rate)
     }
 
-    var canExport: Bool {
+    public var canExport: Bool {
         phase == .ready && state?.exportIssue == nil && !export.isRunning
     }
 
     /// Edits made since the video opened or was last saved or exported; undoing back to that point clears it.
-    var hasUnsavedChanges: Bool {
+    public var hasUnsavedChanges: Bool {
         state != nil && state != savedState
     }
 
     /// What the stage shows: the full frame while cropping, otherwise the exported framing.
-    var stageContentSize: CGSize {
+    public var stageContentSize: CGSize {
         guard let state else { return CGSize(width: 16, height: 9) }
         return isCropMode ? state.source.orientedSize : state.outputGeometry.renderSize
     }
 
-    var detailRange: ClosedRange<Double> {
+    public var detailRange: ClosedRange<Double> {
         if let frozenDetailRange { return frozenDetailRange }
         guard let state else { return 0...1 }
         return TimelineWindow.detailRange(
@@ -121,7 +123,7 @@ final class EditorModel {
 
     // MARK: - Opening
 
-    func load(_ url: URL) async {
+    public func load(_ url: URL) async {
         phase = .loading
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = url.startAccessingSecurityScopedResource() ? url : nil
@@ -153,9 +155,9 @@ final class EditorModel {
         }
     }
 
-    func requestOpen(_ url: URL) {
-        if let coordinator {
-            coordinator.open(url, preferring: self)
+    public func requestOpen(_ url: URL) {
+        if let openVideo {
+            openVideo(url)
         } else {
             Task { await load(url) }
         }
@@ -171,14 +173,14 @@ final class EditorModel {
     }
 
     /// An empty window explains in place; a window with a video keeps it and shows a notice.
-    func reportImportFailure(_ message: String) {
+    public func reportImportFailure(_ message: String) {
         if isEmpty { phase = .failed(message) } else { show(message) }
     }
 
     // MARK: - Editing
 
     /// Applies one undoable edit. Rejected edits leave the state alone and explain why.
-    func edit(_ actionName: String, _ change: (inout EditState) throws -> Void) {
+    public func edit(_ actionName: String, _ change: (inout EditState) throws -> Void) {
         guard let current = state else { return }
         var next = current
         do {
@@ -195,11 +197,11 @@ final class EditorModel {
     }
 
     /// Starts a continuous gesture; everything until `endInteraction` is one undo step.
-    func beginInteraction() {
+    public func beginInteraction() {
         if interactionStart == nil { interactionStart = state }
     }
 
-    func interact(_ change: (inout EditState) -> EditNotice?) {
+    public func interact(_ change: (inout EditState) -> EditNotice?) {
         guard let current = state else { return }
         var next = current
         if let notice = change(&next) { interactionNotice = notice }
@@ -208,7 +210,7 @@ final class EditorModel {
         followSelection(ifMovedFrom: current)
     }
 
-    func endInteraction(_ actionName: String) {
+    public func endInteraction(_ actionName: String) {
         defer {
             interactionStart = nil
             interactionNotice = nil
@@ -254,26 +256,26 @@ final class EditorModel {
 
     /// Make Key Photo: the playhead’s frame becomes the Key Photo, and the selection comes to it
     /// if it is outside.
-    func makeKeyPhoto() {
+    public func makeKeyPhoto() {
         edit("Make Key Photo") { $0.makeKeyPhoto(at: playhead) }
     }
 
     /// Shows the Key Photo on the stage, at full resolution and with the exported framing.
-    func showKeyPhoto() {
+    public func showKeyPhoto() {
         guard let state else { return }
         playback.pause()
         scrub(to: state.keyPhotoTime)
     }
 
     /// Whether the stage is showing the Key Photo frame, so it can say so.
-    var isShowingKeyPhoto: Bool {
+    public var isShowingKeyPhoto: Bool {
         guard let state, phase == .ready, !playback.isPlaying, !livePreview.isPlaying, !isCropMode,
               state.isInsideSelection(playhead) else { return false }
         return !offersMakeKeyPhoto
     }
 
     /// The Make Key Photo bubble shows while paused on any frame but the Key Photo, as in Photos on iPhone.
-    var offersMakeKeyPhoto: Bool {
+    public var offersMakeKeyPhoto: Bool {
         guard let state, phase == .ready, !playback.isPlaying, !livePreview.isPlaying else { return false }
         // Offered only when it would change something: the Key Photo resolves to the nearest rendered frame.
         var made = state
@@ -281,69 +283,69 @@ final class EditorModel {
         return made.plan.keyPhotoFrameIndex != state.plan.keyPhotoFrameIndex || made.selectionStart != state.selectionStart
     }
 
-    func setStartAtPlayhead() {
+    public func setStartAtPlayhead() {
         var notice: EditNotice?
         edit("Set Start") { notice = $0.setSelectionStart(playhead) }
         if let notice { show(notice.message) }
     }
 
-    func setEndAtPlayhead() {
+    public func setEndAtPlayhead() {
         var notice: EditNotice?
         edit("Set End") { notice = $0.setSelectionEnd(playhead) }
         if let notice { show(notice.message) }
     }
 
-    func setSelectionStart(_ time: Double) {
+    public func setSelectionStart(_ time: Double) {
         var notice: EditNotice?
         edit("Set Start") { notice = $0.setSelectionStart(time) }
         if let notice { show(notice.message) }
     }
 
-    func setSelectionEnd(_ time: Double) {
+    public func setSelectionEnd(_ time: Double) {
         var notice: EditNotice?
         edit("Set End") { notice = $0.setSelectionEnd(time) }
         if let notice { show(notice.message) }
     }
 
-    func setSpeed(_ speed: Double) {
+    public func setSpeed(_ speed: Double) {
         var notice: EditNotice?
         edit("Change Speed") { notice = try $0.setSpeed(speed) }
         if let notice { show(notice.message) }
     }
 
-    func setOutputDuration(_ target: Double) {
+    public func setOutputDuration(_ target: Double) {
         edit("Change Duration") { try $0.setOutputDuration(target) }
     }
 
-    func setIncludesAudio(_ include: Bool) {
+    public func setIncludesAudio(_ include: Bool) {
         edit(include ? "Turn Sound On" : "Turn Sound Off") { $0.setIncludesAudio(include) }
     }
 
-    func setResolution(_ resolution: OutputResolution) {
+    public func setResolution(_ resolution: OutputResolution) {
         edit("Change Resolution") { $0.setResolution(resolution) }
         UserDefaults.standard.set(resolution.rawValue, forKey: Self.resolutionKey)
     }
 
-    func setBitRate(_ bitRate: VideoBitRate) {
+    public func setBitRate(_ bitRate: VideoBitRate) {
         edit("Change Bit Rate") { $0.setBitRate(bitRate) }
         UserDefaults.standard.set(bitRate.rawValue, forKey: Self.bitRateKey)
     }
 
-    func setHDR(_ on: Bool) {
+    public func setHDR(_ on: Bool) {
         edit(on ? "Turn HDR On" : "Turn HDR Off") { $0.setHDR(on) }
         UserDefaults.standard.set(on, forKey: Self.hdrKey)
     }
 
-    func setIncludesLocation(_ include: Bool) {
+    public func setIncludesLocation(_ include: Bool) {
         edit(include ? "Include Location" : "Remove Location") { $0.setIncludesLocation(include) }
         UserDefaults.standard.set(include, forKey: Self.locationKey)
     }
 
-    func chooseLocation(_ location: CaptureLocation) {
+    public func chooseLocation(_ location: CaptureLocation) {
         edit("Choose Location") { $0.chooseLocation(location) }
     }
 
-    func clearChosenLocation() {
+    public func clearChosenLocation() {
         edit("Clear Chosen Location") { $0.clearChosenLocation() }
     }
 
@@ -368,21 +370,21 @@ final class EditorModel {
     private static let locationKey = "IncludesLocation"
 
     /// Choosing a ratio enters Crop mode.
-    func setCropAspect(_ aspect: CropAspect) {
+    public func setCropAspect(_ aspect: CropAspect) {
         edit("Change Crop Ratio") { try $0.setCropAspect(aspect) }
         isCropMode = true
     }
 
-    func setCropRect(_ rect: CGRect) {
+    public func setCropRect(_ rect: CGRect) {
         edit("Adjust Crop") { $0.setCropRect(rect) }
     }
 
-    func resetCrop() {
+    public func resetCrop() {
         edit("Reset Crop") { $0.resetCrop() }
     }
 
     /// Arrow keys in Crop mode: one source pixel, or ten with Shift.
-    func nudgeCrop(dx: Double, dy: Double) {
+    public func nudgeCrop(dx: Double, dy: Double) {
         guard let state else { return }
         let size = state.source.orientedSize
         edit("Nudge Crop") {
@@ -393,7 +395,7 @@ final class EditorModel {
     // MARK: - Playback and playhead
 
     /// Moves the playhead and shows that source frame, paused.
-    func scrub(to time: Double) {
+    public func scrub(to time: Double) {
         guard let state else { return }
         playhead = min(max(time, 0), state.source.duration)
         followPlayhead()
@@ -410,7 +412,7 @@ final class EditorModel {
         detailFollowsPlayhead = false
     }
 
-    func togglePlayback() {
+    public func togglePlayback() {
         guard let state else { return }
         if playback.isPlaying {
             // Pausing reports the frame on screen as the playhead and keeps it there.
@@ -425,7 +427,7 @@ final class EditorModel {
     }
 
     /// Left and Right: rendered output frames inside the selection, source frames outside it.
-    func step(_ frames: Int) {
+    public func step(_ frames: Int) {
         guard let state else { return }
         playback.pause()
         if state.isInsideSelection(playhead) {
@@ -440,7 +442,7 @@ final class EditorModel {
         scrub(to: playhead + Double(frames) * frameDuration)
     }
 
-    func previewLivePhoto() {
+    public func previewLivePhoto() {
         guard state?.exportIssue == nil else {
             if let issue = state?.exportIssue?.errorDescription { show(issue) }
             return
@@ -452,7 +454,7 @@ final class EditorModel {
     // MARK: - Keyboard
 
     /// Single-key shortcuts arrive here only when no text field has focus, so they never fire while typing.
-    func handleKey(_ press: KeyPress) -> Bool {
+    public func handleKey(_ press: KeyPress) -> Bool {
         guard phase == .ready else { return false }
         // Arrow keys also carry the numeric-pad and function flags, so only ⌘, ⌥, and ⌃ disqualify a press;
         // those belong to menu shortcuts.
@@ -491,7 +493,7 @@ final class EditorModel {
 
     // MARK: - Notices
 
-    func show(_ message: String) {
+    public func show(_ message: String) {
         notice = message
         noticeTask?.cancel()
         noticeTask = Task { [weak self] in
@@ -510,7 +512,7 @@ final class EditorModel {
     @ObservationIgnored private var stageResizeTask: Task<Void, Never>?
 
     /// Called by the stage with its size on screen, in pixels.
-    func stageDidResize(longEdgePixels: CGFloat) {
+    public func stageDidResize(longEdgePixels: CGFloat) {
         let stepped = max(720, Int((longEdgePixels / 256).rounded(.up)) * 256)
         guard stepped != stageLongEdge else { return }
         stageLongEdge = stepped
@@ -583,32 +585,28 @@ final class EditorModel {
 
     // MARK: - Export
 
-    func saveToPhotos() {
-        guard canExport, let state else { return }
-        startExport(.photos, of: state)
+    /// Starts saving the edit to Photos; the task returns whether it saved. Nil when the edit can't be exported.
+    @discardableResult
+    public func saveToPhotos() -> Task<Bool, Never>? {
+        guard canExport, let state else { return nil }
+        return startExport(.photos, of: state)
     }
 
-    /// Asks for a new folder’s name and location, then exports the pair into it.
-    func exportFiles() async {
-        guard canExport, let state, let folder = await chooseExportFolder() else { return }
+    /// Exports the pair into `folder`, a new folder the app has asked the user to name.
+    public func exportFiles(to folder: URL) {
+        guard canExport, let state else { return }
         startExport(.folder(folder), of: state)
     }
 
-    func cancelExport() {
-        export.cancel()
+    /// Runs a failed export again, to the same destination.
+    public func retry(_ failure: ExportFailure) {
+        export.failure = nil
+        guard canExport, let state else { return }
+        startExport(failure.destination, of: state)
     }
 
-    func recover(_ recovery: ExportFailure.Recovery, from failure: ExportFailure) {
-        export.failure = nil
-        switch recovery {
-        case .tryAgain:
-            guard canExport, let state else { return }
-            startExport(failure.destination, of: state)
-        case .exportFiles, .chooseAnotherName:
-            Task { await exportFiles() }
-        case .openPhotosSettings:
-            NSWorkspace.shared.open(Self.photosPrivacySettings)
-        }
+    public func cancelExport() {
+        export.cancel()
     }
 
     /// Exports `snapshot`, so edits made while it runs don’t change what is saved. Returns whether it saved.
@@ -629,102 +627,15 @@ final class EditorModel {
         }
     }
 
-    private func chooseExportFolder() async -> URL? {
-        let panel = NSSavePanel()
-        panel.title = "Export Live Photo Files"
-        panel.message = "Creates a folder with a matched JPEG and MOV. Import both into Photos together to get a Live Photo; this isn’t a single-file format."
-        panel.prompt = "Export"
-        panel.nameFieldLabel = "Folder Name:"
-        panel.canCreateDirectories = true
-        panel.nameFieldStringValue = Self.availableFolderName(
-            (sourceName as NSString).deletingPathExtension + " Live Photo", in: panel.directoryURL
-        )
-        let validator = ExportFolderValidator()
-        panel.delegate = validator
-        let response = if let window { await panel.beginSheetModal(for: window) } else { await panel.begin() }
-        withExtendedLifetime(validator) {}
-        guard response == .OK, let folder = panel.url else { return nil }
-        // Still never replaces files, even when the panel offered to.
-        if FileManager.default.fileExists(atPath: folder.path) {
-            export.failure = ExportFailure(
-                destination: .folder(folder),
-                title: "“\(folder.lastPathComponent)” already exists",
-                message: "Still never replaces existing files. Choose another name or location.",
-                recoveries: [.chooseAnotherName]
-            )
-            return nil
-        }
-        return folder
-    }
-
-    /// Suggests “Name 2”, “Name 3”, … when the panel’s folder already has “Name”, so exporting the same
-    /// video again doesn’t start with a name that would be refused.
-    private static func availableFolderName(_ base: String, in directory: URL?) -> String {
-        guard let directory else { return base }
-        var candidate = base
-        var number = 2
-        while FileManager.default.fileExists(atPath: directory.appending(path: candidate).path) && number < 100 {
-            candidate = "\(base) \(number)"
-            number += 1
-        }
-        return candidate
-    }
-
-    private static let photosPrivacySettings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")!
-
     // MARK: - Closing
 
     /// Closing needs the user’s say while edits are unsaved or an export is running.
-    var needsCloseConfirmation: Bool {
+    public var needsCloseConfirmation: Bool {
         hasUnsavedChanges || export.isRunning
     }
 
-    /// Asks before the window closes, or the app quits, while edits are unsaved or an export is running.
-    /// Returns whether closing may go ahead.
-    func confirmClose(quitting: Bool) async -> Bool {
-        guard let window, needsCloseConfirmation else { return true }
-        if export.isRunning {
-            guard export.canCancel else {
-                // A Photos commit can’t be called back; let it finish, then ask about anything still unsaved.
-                await export.waitUntilFinished()
-                return await confirmClose(quitting: quitting)
-            }
-            let alert = NSAlert()
-            alert.messageText = "Stop saving this Live Photo?"
-            alert.informativeText = quitting
-                ? "It hasn’t finished saving. If you quit now, it won’t be saved."
-                : "It hasn’t finished saving. If you close the window now, it won’t be saved."
-            alert.addButton(withTitle: "Keep Saving")
-            alert.addButton(withTitle: quitting ? "Stop and Quit" : "Stop and Close")
-            guard await alert.beginSheetModal(for: window) == .alertSecondButtonReturn else { return false }
-            export.cancel()
-            await export.waitUntilFinished()
-            return true
-        }
-
-        let alert = NSAlert()
-        alert.messageText = "Do you want to save a Live Photo from “\(sourceName)”?"
-        alert.informativeText = "Your edits will be lost if you don’t save them."
-        let canSave = canExport
-        if canSave { alert.addButton(withTitle: "Save to Photos") }
-        alert.addButton(withTitle: "Cancel")
-        let discard = alert.addButton(withTitle: "Don’t Save")
-        discard.keyEquivalent = "d"
-        discard.keyEquivalentModifierMask = .command
-        let response = await alert.beginSheetModal(for: window)
-        switch (canSave, response) {
-        case (true, .alertFirstButtonReturn):
-            guard let state else { return true }
-            return await startExport(.photos, of: state).value
-        case (true, .alertThirdButtonReturn), (false, .alertSecondButtonReturn):
-            return true
-        default:
-            return false
-        }
-    }
-
     /// Releases what the window holds once it has closed: players, renders, and the app’s own copies of files.
-    func close() {
+    public func close() {
         export.cancel()
         selectionPreviewTask?.cancel()
         noticeTask?.cancel()
@@ -739,22 +650,11 @@ final class EditorModel {
     }
 }
 
-/// Keeps the export panel open when the name is taken, instead of offering to replace it.
-private final class ExportFolderValidator: NSObject, NSOpenSavePanelDelegate {
-    func panel(_ sender: Any, validate url: URL) throws {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteFileExistsError, userInfo: [
-            NSLocalizedDescriptionKey: "“\(url.lastPathComponent)” already exists.",
-            NSLocalizedRecoverySuggestionErrorKey: "Still never replaces existing files. Choose another name.",
-        ])
-    }
-}
-
 /// A video chosen with the system Photos picker, copied into the app’s temporary folder.
-struct PickedMovie: Transferable {
-    let url: URL
+public struct PickedMovie: Transferable {
+    public let url: URL
 
-    static var transferRepresentation: some TransferRepresentation {
+    public static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(importedContentType: .movie) { received in
             let directory = try TemporaryFiles.makeItemFolder(in: TemporaryFiles.imports)
             let destination = directory.appending(path: received.file.lastPathComponent)
@@ -762,8 +662,4 @@ struct PickedMovie: Transferable {
             return PickedMovie(url: destination)
         }
     }
-}
-
-extension FocusedValues {
-    @Entry var editor: EditorModel?
 }

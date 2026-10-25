@@ -1,4 +1,4 @@
-import AppKit
+import ImageIO
 import Observation
 import Photos
 import StillCore
@@ -7,29 +7,32 @@ import StillCore
 /// Photo. It uses the export pipeline, so the Key Photo shown is the one that will be saved. It renders at the
 /// size the stage shows it, so the LIVE preview is sharp on screen.
 @Observable
-final class LivePhotoPreviewRenderer {
-    private(set) var isRendering = false
-    private(set) var livePhoto: PHLivePhoto?
-    private(set) var keyPhoto: NSImage?
+public final class LivePhotoPreviewRenderer {
+    public private(set) var isRendering = false
+    public private(set) var livePhoto: PHLivePhoto?
+    /// Decoded with its gain map, so an HDR Key Photo can show as HDR.
+    public private(set) var keyPhoto: CGImage?
     /// The edit the current preview was rendered from.
-    private(set) var renderedPlan: EditPlan?
+    public private(set) var renderedPlan: EditPlan?
     /// How the latest preview actually encoded, for the size estimate. It's kept while a new preview renders:
     /// the same video at a slightly different edit encodes much the same.
-    private(set) var sizeCalibration: SizeCalibration?
+    public private(set) var sizeCalibration: SizeCalibration?
     /// Whether the LIVE overlay is playing.
-    var isPlaying = false
+    public var isPlaying = false
 
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var playWhenReady = false
     @ObservationIgnored private var directory: URL?
 
-    func isCurrent(for plan: EditPlan) -> Bool {
+    public init() {}
+
+    public func isCurrent(for plan: EditPlan) -> Bool {
         renderedPlan == plan
     }
 
     /// Renders `plan` after `delay` with its longer edge at most `longEdge` pixels, replacing any render still
     /// waiting or running.
-    func schedule(_ plan: EditPlan, source: SourceMedia, longEdge: Int, delay: Duration = .milliseconds(600)) {
+    public func schedule(_ plan: EditPlan, source: SourceMedia, longEdge: Int, delay: Duration = .milliseconds(600)) {
         task?.cancel()
         guard plan.issue(sourceDuration: source.duration) == nil else {
             isRendering = false
@@ -44,7 +47,7 @@ final class LivePhotoPreviewRenderer {
     }
 
     /// Plays the preview now, or as soon as the render in progress finishes.
-    func play() {
+    public func play() {
         if livePhoto != nil && !isRendering {
             isPlaying = true
         } else if isRendering {
@@ -52,12 +55,12 @@ final class LivePhotoPreviewRenderer {
         }
     }
 
-    func stop() {
+    public func stop() {
         playWhenReady = false
         isPlaying = false
     }
 
-    func reset() {
+    public func reset() {
         task?.cancel()
         stop()
         isRendering = false
@@ -103,12 +106,9 @@ final class LivePhotoPreviewRenderer {
     }
 
     /// Decoded with its gain map applied, so the inspector can show an HDR Key Photo as HDR.
-    private static func image(at url: URL) -> NSImage? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, [
-                  kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR,
-              ] as CFDictionary)
-        else { return NSImage(contentsOf: url) }
-        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    private static func image(at url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let hdr = [kCGImageSourceDecodeRequest: kCGImageSourceDecodeToHDR] as CFDictionary
+        return CGImageSourceCreateImageAtIndex(source, 0, hdr) ?? CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 }

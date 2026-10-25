@@ -39,12 +39,28 @@ targets:
         DEFINES_MODULE: YES
         SKIP_INSTALL: YES
 
+  # The editing session behind a window, shared with the iOS app through Package.swift.
+  StillEditor:
+    type: framework
+    platform: macOS
+    sources: [StillEditor]
+    dependencies:
+      - target: StillCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chen.StillEditor
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+
   Still:
     type: application
     platform: macOS
     sources: [Still]
     dependencies:
       - target: StillCore
+      - target: StillEditor
     info:
       path: Still/Info.plist
       properties:

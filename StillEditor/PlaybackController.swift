@@ -11,18 +11,18 @@ import Observation
 /// one behind and comes forward once it shows the playhead's frame. Replacing the item of the player on screen
 /// blanked it until the new item had decoded a frame.
 @Observable
-final class PlaybackController {
-    let sourcePlayers = [AVPlayer(), AVPlayer()]
-    private(set) var activeSource = 0
-    let selectionPlayer = AVPlayer()
+public final class PlaybackController {
+    public let sourcePlayers = [AVPlayer(), AVPlayer()]
+    public private(set) var activeSource = 0
+    public let selectionPlayer = AVPlayer()
 
-    var sourcePlayer: AVPlayer { sourcePlayers[activeSource] }
+    public var sourcePlayer: AVPlayer { sourcePlayers[activeSource] }
 
-    private(set) var isPlaying = false
-    private(set) var showsSelectionPlayer = false
+    public private(set) var isPlaying = false
+    public private(set) var showsSelectionPlayer = false
 
     /// Called with the source time being shown while playing.
-    @ObservationIgnored var onPlaybackTime: ((Double) -> Void)?
+    @ObservationIgnored public var onPlaybackTime: ((Double) -> Void)?
 
     @ObservationIgnored private var selectionStart = 0.0
     @ObservationIgnored private var selectionSpeed = 1.0
@@ -38,7 +38,7 @@ final class PlaybackController {
     /// The source time most recently asked for, which a source item coming forward must show.
     @ObservationIgnored private var requestedSourceTime = 0.0
 
-    init() {
+    public init() {
         for player in sourcePlayers { player.actionAtItemEnd = .pause }
         selectionPlayer.actionAtItemEnd = .none
         let interval = CMTime(value: 1, timescale: 60)
@@ -59,7 +59,7 @@ final class PlaybackController {
     // MARK: - Items
 
     /// Loads `item` behind the source player on screen, and brings it forward once it shows `time`.
-    func setSourceItem(_ item: AVPlayerItem, showing time: Double) {
+    public func setSourceItem(_ item: AVPlayerItem, showing time: Double) {
         itemGeneration += 1
         let generation = itemGeneration
         let standby = sourcePlayers[1 - activeSource]
@@ -88,7 +88,7 @@ final class PlaybackController {
         }
     }
 
-    func setSelectionItem(_ item: AVPlayerItem, start: Double, speed: Double) {
+    public func setSelectionItem(_ item: AVPlayerItem, start: Double, speed: Double) {
         let wasPlayingSelection = isPlaying && showsSelectionPlayer
         selectionPlayer.replaceCurrentItem(with: item)
         selectionStart = start
@@ -103,14 +103,14 @@ final class PlaybackController {
     // MARK: - Transport
 
     /// Shows the source frame at `time`, paused.
-    func show(sourceTime time: Double) {
+    public func show(sourceTime time: Double) {
         pause()
         revealsSourceAfterSeek = false
         seekSource(to: time)
         showsSelectionPlayer = false
     }
 
-    func playSource(from time: Double) {
+    public func playSource(from time: Double) {
         pause()
         revealsSourceAfterSeek = false
         seekSource(to: time)
@@ -120,7 +120,7 @@ final class PlaybackController {
     }
 
     /// Plays the selection as exported, from the output time that matches `sourceTime`.
-    func playSelection(fromSourceTime sourceTime: Double) {
+    public func playSelection(fromSourceTime sourceTime: Double) {
         guard hasSelectionItem else { return playSource(from: sourceTime) }
         pause()
         revealsSourceAfterSeek = false
@@ -136,7 +136,7 @@ final class PlaybackController {
     /// Paused in the selection, the frame on screen stays: the selection player keeps showing it until the
     /// source player, which scrubbing uses, has sought to the same frame. Switching at once showed the
     /// source player's older frame for a moment.
-    func pause() {
+    public func pause() {
         guard isPlaying else { return }
         for player in sourcePlayers { player.pause() }
         selectionPlayer.pause()
@@ -161,7 +161,7 @@ final class PlaybackController {
     }
 
     /// Releases both items and observers once the window closes.
-    func tearDown() {
+    public func tearDown() {
         pause()
         for (player, token) in timeObservers { player.removeTimeObserver(token) }
         timeObservers.removeAll()
@@ -173,13 +173,13 @@ final class PlaybackController {
     }
 
     /// Steps the source player by whole source frames, which also handles variable frame rates.
-    func stepSource(by count: Int) {
+    public func stepSource(by count: Int) {
         pause()
         showsSelectionPlayer = false
         sourcePlayer.currentItem?.step(byCount: count)
     }
 
-    var sourceTime: Double {
+    public var sourceTime: Double {
         sourcePlayer.currentTime().seconds
     }
 

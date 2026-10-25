@@ -1,5 +1,6 @@
 import PhotosUI
 import StillCore
+import StillEditor
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -64,7 +65,8 @@ struct EditorWindow: View {
             .focusedSceneValue(\.editor, model)
             .onAppear {
                 model.undoManager = undoManager
-                model.coordinator = coordinator
+                let editor = model
+                model.openVideo = { [weak editor] url in coordinator.open(url, preferring: editor) }
                 coordinator.register(model, openWindow: openWindow)
                 coordinator.handle(request, in: model)
             }

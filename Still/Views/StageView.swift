@@ -2,6 +2,7 @@ import AVKit
 import Photos
 import PhotosUI
 import StillCore
+import StillEditor
 import SwiftUI
 
 /// The stage, timeline, and keyboard handling for an open video.

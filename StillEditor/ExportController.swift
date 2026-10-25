@@ -1,4 +1,3 @@
-import AppKit
 import AVFoundation
 import Observation
 import OSLog
@@ -11,14 +10,14 @@ import StillCore
 /// Photos or moved into the user’s folder, so a cancelled or failed export never leaves a partial result
 /// where the user would find it.
 @Observable
-final class ExportController {
-    enum Destination: Equatable {
+public final class ExportController {
+    public enum Destination: Equatable {
         case photos
         /// A new folder the user named; it must not exist yet.
         case folder(URL)
     }
 
-    enum Stage: Equatable {
+    public enum Stage: Equatable {
         case preparing
         case rendering(Double)
         case creatingLivePhoto
@@ -26,31 +25,33 @@ final class ExportController {
         case saving
     }
 
-    enum Outcome: Equatable {
+    public enum Outcome: Equatable {
         case saved(Destination)
         case cancelled
         case failed
     }
 
-    private(set) var destination: Destination?
-    private(set) var stage: Stage?
+    public private(set) var destination: Destination?
+    public private(set) var stage: Stage?
     /// Cancel was requested; the current stage is winding down.
-    private(set) var isCancelling = false
+    public private(set) var isCancelling = false
     /// The last failure, until the user dismisses it.
-    var failure: ExportFailure?
+    public var failure: ExportFailure?
 
     @ObservationIgnored private var task: Task<Outcome, Never>?
     private static let log = Logger(subsystem: "com.chen.Still", category: "export")
 
-    var isRunning: Bool { stage != nil }
+    public init() {}
 
-    var canCancel: Bool {
+    public var isRunning: Bool { stage != nil }
+
+    public var canCancel: Bool {
         guard let stage else { return false }
         return stage != .saving && !isCancelling
     }
 
     /// Overall progress, weighted by how long each stage usually takes.
-    var progress: Double {
+    public var progress: Double {
         switch stage {
         case nil, .preparing: 0.02
         case let .rendering(fraction): 0.02 + 0.88 * fraction
@@ -59,7 +60,7 @@ final class ExportController {
         }
     }
 
-    var stageTitle: String {
+    public var stageTitle: String {
         switch stage {
         case nil: ""
         case _ where isCancelling: "Cancelling…"
@@ -71,7 +72,7 @@ final class ExportController {
     }
 
     /// Exports `plan`; returns once the pair is in Photos or the folder, or the export has ended otherwise.
-    func run(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String) async -> Outcome {
+    public func run(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String) async -> Outcome {
         guard task == nil else { return .failed }
         self.destination = destination
         stage = .preparing
@@ -87,14 +88,14 @@ final class ExportController {
     }
 
     /// Stops the export unless it is already saving.
-    func cancel() {
+    public func cancel() {
         guard canCancel else { return }
         isCancelling = true
         task?.cancel()
     }
 
     /// Waits for the export in progress, if any, to end.
-    func waitUntilFinished() async {
+    public func waitUntilFinished() async {
         _ = await task?.value
     }
 
@@ -181,40 +182,40 @@ final class ExportController {
 }
 
 /// An export that failed, described for the user with what they can do next.
-struct ExportFailure: Identifiable {
-    enum Recovery: Hashable, Identifiable {
+public struct ExportFailure: Identifiable {
+    public enum Recovery: Hashable, Identifiable {
         case tryAgain
         case exportFiles
         case openPhotosSettings
         case chooseAnotherName
 
-        var id: Self { self }
+        public var id: Self { self }
 
-        var title: String {
+        public var title: String {
             switch self {
             case .tryAgain: "Try Again"
-            case .exportFiles: "Export Files…"
-            case .openPhotosSettings: "Open System Settings"
+            case .exportFiles: ExportFailure.exportFilesTitle
+            case .openPhotosSettings: ExportFailure.openSettingsTitle
             case .chooseAnotherName: "Choose Another Name…"
             }
         }
     }
 
-    let id = UUID()
-    let destination: ExportController.Destination
-    let title: String
-    let message: String
+    public let id = UUID()
+    public let destination: ExportController.Destination
+    public let title: String
+    public let message: String
     /// The first is the default action. Every alert also offers Cancel, and the edit is always kept.
-    let recoveries: [Recovery]
+    public let recoveries: [Recovery]
 
-    init(destination: ExportController.Destination, title: String, message: String, recoveries: [Recovery]) {
+    public init(destination: ExportController.Destination, title: String, message: String, recoveries: [Recovery]) {
         self.destination = destination
         self.title = title
         self.message = message
         self.recoveries = recoveries
     }
 
-    init(_ error: Error, destination: ExportController.Destination, source: SourceMedia) {
+    public init(_ error: Error, destination: ExportController.Destination, source: SourceMedia) {
         let toPhotos = destination == .photos
         let alternative: [Recovery] = toPhotos ? [.exportFiles] : []
 
@@ -222,7 +223,7 @@ struct ExportFailure: Identifiable {
             self.init(
                 destination: destination,
                 title: "Still can’t add to your Photos library",
-                message: "Allow Still in System Settings › Privacy & Security › Photos. You can also export the files and import them into Photos yourself.",
+                message: "\(Self.photosPermissionHint) You can also export the files and import them into Photos yourself.",
                 recoveries: [.openPhotosSettings, .exportFiles]
             )
         } else if Self.isOutOfSpace(error) {
@@ -269,6 +270,17 @@ struct ExportFailure: Identifiable {
             )
         }
     }
+
+    // Where each platform keeps the Photos permission, and what its export of the pair is called.
+    #if os(macOS)
+    static let openSettingsTitle = "Open System Settings"
+    static let exportFilesTitle = "Export Files…"
+    static let photosPermissionHint = "Allow Still in System Settings › Privacy & Security › Photos."
+    #else
+    static let openSettingsTitle = "Open Settings"
+    static let exportFilesTitle = "Share Files…"
+    static let photosPermissionHint = "Allow Still to add photos in Settings › Apps › Still › Photos."
+    #endif
 
     private static func detail(of error: Error, fallback: String) -> String {
         let description = (error as? LocalizedError)?.errorDescription ?? (error as NSError).localizedDescription

@@ -1,4 +1,5 @@
 import AppKit
+import StillEditor
 import SwiftUI
 import UniformTypeIdentifiers
 

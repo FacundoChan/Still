@@ -1,4 +1,5 @@
 import AppKit
+import StillEditor
 import SwiftUI
 
 /// Connects an editor to the window SwiftUI hosts it in: sheets, the unsaved-edits dot in the close button,
