@@ -161,10 +161,19 @@ public struct EditState: Sendable, Equatable {
     /// The current bit rate choice; nil when the output settings use a rate outside the choices.
     public var bitRate: VideoBitRate? { VideoBitRate(bitsPerPixel: output.bitsPerPixel) }
 
-    /// A resolution is unavailable when it gives the same size as a smaller one, because the crop isn't larger.
-    /// The current one always stays available, so the menu never disables its own selection.
+    /// The choice the menus show as chosen: the smallest that gives the current size. On a 720p video, 1080p gives
+    /// the same size as 720p, so 720p shows as chosen even while 1080p is the one remembered; the remembered choice
+    /// still applies once the video or crop is larger. Nil when the size is outside the choices.
+    public var shownResolution: OutputResolution? {
+        let size = outputGeometry.renderSize
+        return OutputResolution.allCases
+            .sorted { $0.maxLongEdge < $1.maxLongEdge }
+            .first { renderSize(at: $0) == size }
+    }
+
+    /// A resolution is unavailable when it gives the same size as a smaller one, because the video or crop isn't
+    /// larger: choosing it would change nothing. The shown choice is always available, since it is the smallest.
     public func isResolutionAvailable(_ candidate: OutputResolution) -> Bool {
-        guard candidate != resolution else { return true }
         let size = renderSize(at: candidate)
         return !OutputResolution.allCases.contains { $0.maxLongEdge < candidate.maxLongEdge && renderSize(at: $0) == size }
     }

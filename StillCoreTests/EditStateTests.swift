@@ -59,14 +59,14 @@ struct EditStateTests {
     }
 
     @Test func slowingPastTheLimitShrinksAroundTheKeyPhoto() throws {
-        // Selection 10–16 s with the Key Photo at 12 s; 0.5× would make 12 s, so the selection becomes 5 s.
+        // Selection 10–18 s with the Key Photo at 12 s; 0.5× would make 16 s, so the selection becomes 7.5 s.
         var state = try EditState(source: source(30))
         state.moveSelection(toStart: 10)
-        state.setSelectionEnd(16)
+        state.setSelectionEnd(18)
         state.setKeyPhoto(at: 12)
-        #expect(try state.setSpeed(0.5) == .selectionResizedForSpeed(1...10))
-        #expect(close(state.selectionLength, 5) && close(state.outputDuration, 10))
-        #expect(close(state.selectionStart, 12 - 5.0 / 3), "The Key Photo keeps its place in the selection")
+        #expect(try state.setSpeed(0.5) == .selectionResizedForSpeed(1...15))
+        #expect(close(state.selectionLength, 7.5) && close(state.outputDuration, 15))
+        #expect(close(state.selectionStart, 12 - 7.5 / 4), "The Key Photo keeps its place in the selection")
         #expect(close(state.keyPhotoTime, 12))
         #expect(state.exportIssue == nil)
     }
@@ -77,7 +77,7 @@ struct EditStateTests {
         state.setSelectionEnd(11)
         state.setSelectionStart(10)
         #expect(close(state.selectionLength, 1))
-        #expect(try state.setSpeed(2) == .selectionResizedForSpeed(1...10))
+        #expect(try state.setSpeed(2) == .selectionResizedForSpeed(1...15))
         #expect(close(state.selectionLength, 2) && close(state.outputDuration, 1))
     }
 
@@ -143,19 +143,19 @@ struct EditStateTests {
     // MARK: - Trimming
 
     @Test func trimStopsAtTheSupportedLength() throws {
-        var state = try EditState(source: source(40))
+        var state = try EditState(source: source(60))
         state.moveSelection(toStart: 10)
-        #expect(state.setSelectionEnd(28) == .durationLimit(1...10))
-        #expect(close(state.selectionEnd, 20))
-        state.setKeyPhoto(at: 19.5)
-        #expect(state.setSelectionStart(19.8) == .durationLimit(1...10))
-        #expect(close(state.selectionStart, 19))
+        #expect(state.setSelectionEnd(28) == .durationLimit(1...15))
+        #expect(close(state.selectionEnd, 25))
+        state.setKeyPhoto(at: 24.5)
+        #expect(state.setSelectionStart(24.8) == .durationLimit(1...15))
+        #expect(close(state.selectionStart, 24))
 
-        // At 2× the supported 1–10 s of output spans 2–20 s of source.
+        // At 2× the supported 1–15 s of output spans 2–30 s of source.
         try state.setSpeed(2)
-        #expect(close(state.selectionStart, 18.5) && close(state.selectionEnd, 20.5))
-        #expect(state.setSelectionEnd(60) == .durationLimit(1...10))
-        #expect(close(state.selectionEnd, 38.5))
+        #expect(close(state.selectionStart, 23.5) && close(state.selectionEnd, 25.5))
+        #expect(state.setSelectionEnd(58) == .durationLimit(1...15))
+        #expect(close(state.selectionEnd, 53.5))
         #expect(state.exportIssue == nil)
     }
 
@@ -185,7 +185,7 @@ struct EditStateTests {
 
     @Test func outputDurationValidation() throws {
         var state = try EditState(source: source(4))
-        #expect(throws: EditRejection.durationOutOfRange(target: 11, range: 1...10)) { try state.setOutputDuration(11) }
+        #expect(throws: EditRejection.durationOutOfRange(target: 16, range: 1...15)) { try state.setOutputDuration(16) }
         #expect(throws: EditRejection.needsMoreSource(required: 4.5, available: 4)) { try state.setOutputDuration(4.5) }
         try state.setOutputDuration(2)
         #expect(close(state.outputDuration, 2))
@@ -234,11 +234,13 @@ struct EditStateTests {
         #expect(state.isResolutionAvailable(.fullHD) && state.isResolutionAvailable(.hd))
     }
 
-    @Test func currentResolutionStaysAvailable() throws {
+    @Test func aChoiceThatChangesNothingIsUnavailableEvenWhenChosen() throws {
         var state = try EditState(source: source(10))
         #expect(!state.isResolutionAvailable(.uhd), "A 1080p video can't get larger")
         state.setResolution(.uhd)
-        #expect(state.isResolutionAvailable(.uhd))
+        #expect(!state.isResolutionAvailable(.uhd), "Chosen, it still gives the same size as 1080p")
+        #expect(state.shownResolution == .fullHD && state.isResolutionAvailable(.fullHD))
+        #expect(state.resolution == .uhd, "The choice is kept for a crop or video it would make larger")
         #expect(state.outputGeometry.renderSize == CGSize(width: 1920, height: 1080))
     }
 

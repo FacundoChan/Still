@@ -134,6 +134,10 @@ public final class EditorModel {
             if let previous = source, previous.url != url { TemporaryFiles.removeImportedCopy(previous.url) }
             source = media
             sourceName = url.lastPathComponent
+            #if DEBUG
+            playback.recorder.sourceName = sourceName
+            playback.recorder.note("opened “\(sourceName)”")
+            #endif
             state = initial
             savedState = initial
             playhead = 0
@@ -592,10 +596,12 @@ public final class EditorModel {
         return startExport(.photos, of: state)
     }
 
-    /// Exports the pair into `folder`, a new folder the app has asked the user to name.
-    public func exportFiles(to folder: URL) {
-        guard canExport, let state else { return }
-        startExport(.folder(folder), of: state)
+    /// Exports the pair into `folder`, a new folder the app has asked the user to name, or one the iPhone app shares
+    /// from. The task returns whether it exported; nil when the edit can't be exported.
+    @discardableResult
+    public func exportFiles(to folder: URL) -> Task<Bool, Never>? {
+        guard canExport, let state else { return nil }
+        return startExport(.folder(folder), of: state)
     }
 
     /// Runs a failed export again, to the same destination.
@@ -621,7 +627,12 @@ public final class EditorModel {
             savedState = snapshot
             switch destination {
             case .photos: show("Saved to Photos")
+            #if os(macOS)
             case let .folder(folder): show("Exported “\(folder.lastPathComponent)”")
+            #else
+            // On iPhone the share sheet that follows says it.
+            case .folder: break
+            #endif
             }
             return true
         }
@@ -651,15 +662,19 @@ public final class EditorModel {
 }
 
 /// A video chosen with the system Photos picker, copied into the app’s temporary folder.
-public struct PickedMovie: Transferable {
+public nonisolated struct PickedMovie: Transferable, Sendable {
     public let url: URL
 
+    /// Photos hands a video over as a movie; failing that, as audiovisual content in general. Either is copied.
     public static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(importedContentType: .movie) { received in
-            let directory = try TemporaryFiles.makeItemFolder(in: TemporaryFiles.imports)
-            let destination = directory.appending(path: received.file.lastPathComponent)
-            try FileManager.default.copyItem(at: received.file, to: destination)
-            return PickedMovie(url: destination)
-        }
+        FileRepresentation(importedContentType: .movie, importing: copy)
+        FileRepresentation(importedContentType: .audiovisualContent, importing: copy)
+    }
+
+    private static func copy(_ received: ReceivedTransferredFile) throws -> PickedMovie {
+        let directory = try TemporaryFiles.makeItemFolder(in: TemporaryFiles.imports)
+        let destination = directory.appending(path: received.file.lastPathComponent)
+        try FileManager.default.copyItem(at: received.file, to: destination)
+        return PickedMovie(url: destination)
     }
 }

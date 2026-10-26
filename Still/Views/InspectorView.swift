@@ -81,7 +81,7 @@ struct InspectorView: View {
                     Text("s").foregroundStyle(.secondary)
                 }
             }
-            .help("The Live Photo's length, 1 to 10 seconds; the selection resizes around the Key Photo")
+            .help("The Live Photo's length, 1 to 15 seconds; the selection resizes around the Key Photo")
             exportIssueRows(state)
         }
     }
@@ -266,14 +266,14 @@ struct InspectorView: View {
         Section("Output") {
             LabeledContent("Resolution") {
                 ColumnMenu(
-                    title: state.resolution?.title ?? "Custom",
+                    title: state.shownResolution?.title ?? "Custom",
                     items: OutputResolution.allCases.map { resolution in
                         let size = state.renderSize(at: resolution)
                         return .init(value: resolution, title: resolution.title,
                                      detail: "\(Int(size.width).formatted()) × \(Int(size.height).formatted())",
                                      isEnabled: state.isResolutionAvailable(resolution))
                     },
-                    selection: state.resolution,
+                    selection: state.shownResolution,
                     choose: { model.setResolution($0) }
                 )
                 .fixedSize()

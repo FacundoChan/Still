@@ -182,23 +182,6 @@ struct KeyPhotoLane: View {
     static let space = "KeyPhotoLane"
 }
 
-/// A rounded bubble with a tail under it at `tailX`.
-nonisolated struct CalloutShape: Shape {
-    var tailX: CGFloat
-    var tailHeight: CGFloat = 5
-
-    func path(in rect: CGRect) -> Path {
-        let body = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height)
-        var path = Path(roundedRect: body, cornerRadius: body.height / 2)
-        let tip = min(max(tailX, body.minX + 10), body.maxX - 10)
-        path.move(to: CGPoint(x: tip - 5, y: body.maxY - 0.5))
-        path.addLine(to: CGPoint(x: tailX, y: body.maxY + tailHeight))
-        path.addLine(to: CGPoint(x: tip + 5, y: body.maxY - 0.5))
-        path.closeSubpath()
-        return path
-    }
-}
-
 /// A seconds field for the selection's start or end.
 struct TimeField: View {
     let value: Double
@@ -465,48 +448,3 @@ nonisolated struct BracketFrame: Shape {
     }
 }
 
-/// Maps between source seconds and points across a strip.
-struct TimeScale {
-    let range: ClosedRange<Double>
-    let width: CGFloat
-
-    var span: Double { max(range.upperBound - range.lowerBound, 0.0001) }
-    var pointsPerSecond: Double { Double(width) / span }
-
-    func x(_ time: Double) -> CGFloat {
-        CGFloat((time - range.lowerBound) / span) * width
-    }
-
-    func time(_ x: CGFloat) -> Double {
-        range.lowerBound + Double(x / max(width, 1)) * span
-    }
-}
-
-enum TimeFormat {
-    /// mm:ss.cc with monospaced digits in mind.
-    static func clock(_ seconds: Double) -> String {
-        let clamped = max(0, seconds)
-        let minutes = Int(clamped) / 60
-        let rest = clamped - Double(minutes * 60)
-        return String(format: "%02d:%05.2f", minutes, rest)
-    }
-
-    static func seconds(_ value: Double) -> String {
-        String(format: "%.2f s", value)
-    }
-
-    /// “1 s”, “4.2 s”: slider end labels.
-    static func shortSeconds(_ value: Double) -> String {
-        let rounded = (value * 10).rounded() / 10
-        return rounded == rounded.rounded() ? "\(Int(rounded)) s" : String(format: "%.1f s", rounded)
-    }
-
-    static func fieldSeconds(_ value: Double) -> String {
-        String(format: "%.2f", value)
-    }
-
-    static func speed(_ value: Double) -> String {
-        let text = value.rounded() == value ? String(Int(value)) : String(value)
-        return "\(text)×"
-    }
-}

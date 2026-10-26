@@ -28,7 +28,7 @@ public struct OutputSettings: Sendable, Equatable {
     public init(
         frameRate: Int32 = 30,
         maxLongEdge: Int = 1920,
-        durationRange: ClosedRange<Double> = 1...10,
+        durationRange: ClosedRange<Double> = 1...15,
         videoCodec: VideoCodec = .hevc,
         bitsPerPixel: Double = 0.25,
         encoderQuality: Double? = nil,

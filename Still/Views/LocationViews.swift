@@ -1,25 +1,8 @@
 import CoreLocation
 import MapKit
 import StillCore
+import StillEditor
 import SwiftUI
-
-/// Place names from Apple Maps. They're looked up only for a location the user includes or is choosing, so
-/// coordinates leave the Mac only once the user has chosen to share them.
-@MainActor
-enum PlaceNames {
-    private static var cache: [String: String] = [:]
-
-    static func name(for location: CaptureLocation) async -> String? {
-        let key = location.cacheKey
-        if let cached = cache[key] { return cached }
-        guard let request = MKReverseGeocodingRequest(location: location.clLocation),
-              let item = try? await request.mapItems.first
-        else { return nil }
-        let name = item.addressRepresentations?.cityWithContext ?? item.name ?? item.address?.shortAddress
-        if let name { cache[key] = name }
-        return name
-    }
-}
 
 /// The included location on a small map, with its place name and controls in the map's corner.
 struct LocationPreview<Controls: View>: View {
@@ -164,23 +147,5 @@ struct LocationPicker: View {
         coordinate = item.location.coordinate
         position = .region(MKCoordinateRegion(center: item.location.coordinate, latitudinalMeters: 3000, longitudinalMeters: 3000))
         results = []
-    }
-}
-
-extension CaptureLocation {
-    var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
-
-    var clLocation: CLLocation { CLLocation(latitude: latitude, longitude: longitude) }
-
-    var region: MKCoordinateRegion {
-        MKCoordinateRegion(center: coordinate, latitudinalMeters: 3000, longitudinalMeters: 3000)
-    }
-
-    /// About 10 m: close enough that the same place shares a name.
-    var cacheKey: String { String(format: "%.4f,%.4f", latitude, longitude) }
-
-    /// “48.8584° N, 2.2945° E”.
-    var coordinateText: String {
-        String(format: "%.4f° %@, %.4f° %@", abs(latitude), latitude >= 0 ? "N" : "S", abs(longitude), longitude >= 0 ? "E" : "W")
     }
 }

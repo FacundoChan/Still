@@ -48,8 +48,8 @@ struct EditPlanTests {
         let sourceDuration = CMTime.seconds(20)
         #expect(plan(from: 0, to: 0.8, speed: 1).issue(sourceDuration: sourceDuration) == .outputTooShort(seconds: 0.8, minimum: 1))
         #expect(plan(from: 0, to: 0.8, speed: 0.5).issue(sourceDuration: sourceDuration) == nil)
-        #expect(plan(from: 0, to: 12, speed: 1).issue(sourceDuration: sourceDuration) == .outputTooLong(seconds: 12, maximum: 10))
-        #expect(plan(from: 0, to: 10, speed: 1).issue(sourceDuration: sourceDuration) == nil)
+        #expect(plan(from: 0, to: 16, speed: 1).issue(sourceDuration: sourceDuration) == .outputTooLong(seconds: 16, maximum: 15))
+        #expect(plan(from: 0, to: 15, speed: 1).issue(sourceDuration: sourceDuration) == nil)
         #expect(plan(from: 18, to: 21, speed: 1).issue(sourceDuration: sourceDuration) == .selectionOutsideSource)
         #expect(plan(from: 0, to: 3, speed: 1, key: 4).issue(sourceDuration: sourceDuration) == .keyPhotoOutsideSelection)
     }
