@@ -180,9 +180,9 @@ public enum LivePhotoLoadError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .notRecognized: "Photos didn’t recognize these files as a Live Photo."
-        case .cancelled: "Loading the Live Photo was cancelled."
-        case .timedOut: "Photos didn’t respond while loading the Live Photo."
+        case .notRecognized: String(localized: "Photos didn’t recognize these files as a Live Photo.", bundle: #bundle)
+        case .cancelled: String(localized: "Loading the Live Photo was cancelled.", bundle: #bundle)
+        case .timedOut: String(localized: "Photos didn’t respond while loading the Live Photo.", bundle: #bundle)
         }
     }
 }

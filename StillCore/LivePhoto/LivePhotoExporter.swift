@@ -18,17 +18,17 @@ public enum LivePhotoExportError: Error, LocalizedError {
         case let .invalidPlan(issue):
             issue.errorDescription
         case let .destinationExists(url):
-            "“\(url.lastPathComponent)” already exists."
+            String(localized: "“\(url.lastPathComponent)” already exists.", bundle: #bundle)
         case .readerConfigurationFailed, .writerConfigurationFailed, .renderFailed:
-            "The Live Photo couldn’t be rendered."
+            String(localized: "The Live Photo couldn’t be rendered.", bundle: #bundle)
         case let .metadataUnavailable(status):
-            "The Live Photo metadata couldn’t be created (\(status))."
+            String(localized: "The Live Photo metadata couldn’t be created (\(Int(status))).", bundle: #bundle)
         case .keyPhotoEncodingFailed:
-            "The Key Photo couldn’t be saved."
+            String(localized: "The Key Photo couldn’t be saved.", bundle: #bundle)
         case let .keyPhotoFrameMissing(seconds):
-            String(format: "No frame was rendered at the Key Photo time (%.3f s).", seconds)
+            String(localized: "No frame was rendered at the Key Photo time (\(seconds, format: .decimals(3)) s).", bundle: #bundle)
         case let .notPaired(reason):
-            "Photos didn’t recognize the rendered files as a Live Photo. \(reason)"
+            String(localized: "Photos didn’t recognize the rendered files as a Live Photo. \(reason)", bundle: #bundle)
         }
     }
 }

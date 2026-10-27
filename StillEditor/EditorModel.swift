@@ -172,7 +172,7 @@ public final class EditorModel {
             guard let movie = try await item.loadTransferable(type: PickedMovie.self) else { return }
             requestOpen(movie.url)
         } catch {
-            reportImportFailure("The video couldn’t be imported from Photos. \(error.localizedDescription)")
+            reportImportFailure(String(localized: "The video couldn’t be imported from Photos. \(error.localizedDescription)", bundle: #bundle))
         }
     }
 
@@ -626,9 +626,9 @@ public final class EditorModel {
             guard case let .saved(destination) = outcome else { return false }
             savedState = snapshot
             switch destination {
-            case .photos: show("Saved to Photos")
+            case .photos: show(String(localized: "Saved to Photos", bundle: #bundle))
             #if os(macOS)
-            case let .folder(folder): show("Exported “\(folder.lastPathComponent)”")
+            case let .folder(folder): show(String(localized: "Exported “\(folder.lastPathComponent)”", bundle: #bundle))
             #else
             // On iPhone the share sheet that follows says it.
             case .folder: break

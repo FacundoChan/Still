@@ -108,10 +108,10 @@ public enum VideoBitRate: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .low: "Low"
-        case .standard: "Standard"
-        case .high: "High"
-        case .veryHigh: "Very High"
+        case .low: String(localized: "Low", bundle: #bundle, comment: "Video bit rate")
+        case .standard: String(localized: "Standard", bundle: #bundle, comment: "Video bit rate")
+        case .high: String(localized: "High", bundle: #bundle, comment: "Video bit rate")
+        case .veryHigh: String(localized: "Very High", bundle: #bundle, comment: "Video bit rate")
         }
     }
 
@@ -222,17 +222,17 @@ public enum EditPlanIssue: Error, Equatable, Sendable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .selectionOutsideSource:
-            "The selection extends beyond the video."
+            String(localized: "The selection extends beyond the video.", bundle: #bundle)
         case let .outputTooShort(seconds, minimum):
-            String(format: "The Live Photo would be %.2f s long; the minimum is %.0f s.", seconds, minimum)
+            String(localized: "The Live Photo would be \(seconds, format: .decimals(2)) s long; the minimum is \(minimum, format: .decimals(0)) s.", bundle: #bundle)
         case let .outputTooLong(seconds, maximum):
-            String(format: "The Live Photo would be %.2f s long; the maximum is %.0f s.", seconds, maximum)
+            String(localized: "The Live Photo would be \(seconds, format: .decimals(2)) s long; the maximum is \(maximum, format: .decimals(0)) s.", bundle: #bundle)
         case .keyPhotoOutsideSelection:
-            "The Key Photo is outside the selection."
+            String(localized: "The Key Photo is outside the selection.", bundle: #bundle)
         case .invalidSpeed:
-            "The playback speed must be positive."
+            String(localized: "The playback speed must be positive.", bundle: #bundle)
         case .invalidCrop:
-            "The crop must lie inside the video frame."
+            String(localized: "The crop must lie inside the video frame.", bundle: #bundle)
         }
     }
 }

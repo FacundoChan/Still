@@ -63,11 +63,12 @@ public final class ExportController {
     public var stageTitle: String {
         switch stage {
         case nil: ""
-        case _ where isCancelling: "Cancelling…"
-        case .preparing: "Preparing…"
-        case .rendering: "Rendering…"
-        case .creatingLivePhoto: "Creating Live Photo…"
-        case .saving: destination == .photos ? "Saving to Photos…" : "Saving Files…"
+        case _ where isCancelling: String(localized: "Cancelling…", bundle: #bundle)
+        case .preparing: String(localized: "Preparing…", bundle: #bundle)
+        case .rendering: String(localized: "Rendering…", bundle: #bundle)
+        case .creatingLivePhoto: String(localized: "Creating Live Photo…", bundle: #bundle)
+        case .saving:
+            destination == .photos ? String(localized: "Saving to Photos…", bundle: #bundle) : String(localized: "Saving Files…", bundle: #bundle)
         }
     }
 
@@ -176,7 +177,7 @@ public final class ExportController {
         return "StillTest-\(stamp)"
         #else
         let base = (sourceName as NSString).deletingPathExtension
-        return base.isEmpty ? "Live Photo" : base
+        return base.isEmpty ? String(localized: "Live Photo", bundle: #bundle) : base
         #endif
     }
 }
@@ -193,10 +194,10 @@ public struct ExportFailure: Identifiable {
 
         public var title: String {
             switch self {
-            case .tryAgain: "Try Again"
+            case .tryAgain: String(localized: "Try Again", bundle: #bundle)
             case .exportFiles: ExportFailure.exportFilesTitle
             case .openPhotosSettings: ExportFailure.openSettingsTitle
-            case .chooseAnotherName: "Choose Another Name…"
+            case .chooseAnotherName: String(localized: "Choose Another Name…", bundle: #bundle)
             }
         }
     }
@@ -222,50 +223,50 @@ public struct ExportFailure: Identifiable {
         if case PhotosSaveError.accessDenied = error {
             self.init(
                 destination: destination,
-                title: "Still can’t add to your Photos library",
-                message: "\(Self.photosPermissionHint) You can also export the files and import them into Photos yourself.",
+                title: String(localized: "Still can’t add to your Photos library", bundle: #bundle),
+                message: String(localized: "\(Self.photosPermissionHint) You can also export the files and import them into Photos yourself.", bundle: #bundle),
                 recoveries: [.openPhotosSettings, .exportFiles]
             )
         } else if Self.isOutOfSpace(error) {
             self.init(
                 destination: destination,
-                title: "There isn’t enough disk space",
-                message: "Free up some space, then try again.",
+                title: String(localized: "There isn’t enough disk space", bundle: #bundle),
+                message: String(localized: "Free up some space, then try again.", bundle: #bundle),
                 recoveries: [.tryAgain] + alternative
             )
         } else if !FileManager.default.fileExists(atPath: source.url.path) {
             self.init(
                 destination: destination,
-                title: "“\(source.url.lastPathComponent)” is no longer available",
-                message: "The video may have been moved or deleted, or its disk disconnected. Put it back, or reconnect the disk, and try again.",
+                title: String(localized: "“\(source.url.lastPathComponent)” is no longer available", bundle: #bundle),
+                message: String(localized: "The video may have been moved or deleted, or its disk disconnected. Put it back, or reconnect the disk, and try again.", bundle: #bundle),
                 recoveries: [.tryAgain]
             )
         } else if case let LivePhotoExportError.destinationExists(url) = error {
             self.init(
                 destination: destination,
-                title: "“\(url.lastPathComponent)” already exists",
-                message: "Still never replaces existing files. Choose another name or location.",
+                title: String(localized: "“\(url.lastPathComponent)” already exists", bundle: #bundle),
+                message: String(localized: "Still never replaces existing files. Choose another name or location.", bundle: #bundle),
                 recoveries: [.chooseAnotherName]
             )
         } else if !toPhotos, Self.isPermissionProblem(error) {
             self.init(
                 destination: destination,
-                title: "Still can’t save files there",
-                message: "You may not have permission to write to that location, or the disk is read-only. Choose another location.",
+                title: String(localized: "Still can’t save files there", bundle: #bundle),
+                message: String(localized: "You may not have permission to write to that location, or the disk is read-only. Choose another location.", bundle: #bundle),
                 recoveries: [.chooseAnotherName]
             )
         } else if toPhotos, error is PhotosSaveError {
             self.init(
                 destination: destination,
-                title: "Photos couldn’t save the Live Photo",
-                message: Self.detail(of: error, fallback: "Try again, or export the files and import them into Photos yourself."),
+                title: String(localized: "Photos couldn’t save the Live Photo", bundle: #bundle),
+                message: Self.detail(of: error, fallback: String(localized: "Try again, or export the files and import them into Photos yourself.", bundle: #bundle)),
                 recoveries: [.tryAgain, .exportFiles]
             )
         } else {
             self.init(
                 destination: destination,
-                title: "The Live Photo couldn’t be created",
-                message: Self.detail(of: error, fallback: "Try again. Your edits are unchanged."),
+                title: String(localized: "The Live Photo couldn’t be created", bundle: #bundle),
+                message: Self.detail(of: error, fallback: String(localized: "Try again. Your edits are unchanged.", bundle: #bundle)),
                 recoveries: [.tryAgain] + alternative
             )
         }
@@ -273,13 +274,13 @@ public struct ExportFailure: Identifiable {
 
     // Where each platform keeps the Photos permission, and what its export of the pair is called.
     #if os(macOS)
-    static let openSettingsTitle = "Open System Settings"
-    static let exportFilesTitle = "Export Files…"
-    static let photosPermissionHint = "Allow Still in System Settings › Privacy & Security › Photos."
+    static let openSettingsTitle = String(localized: "Open System Settings", bundle: #bundle)
+    static let exportFilesTitle = String(localized: "Export Files…", bundle: #bundle)
+    static let photosPermissionHint = String(localized: "Allow Still in System Settings › Privacy & Security › Photos.", bundle: #bundle)
     #else
-    static let openSettingsTitle = "Open Settings"
-    static let exportFilesTitle = "Share Files…"
-    static let photosPermissionHint = "Allow Still to add photos in Settings › Apps › Still › Photos."
+    static let openSettingsTitle = String(localized: "Open Settings", bundle: #bundle)
+    static let exportFilesTitle = String(localized: "Share Files…", bundle: #bundle)
+    static let photosPermissionHint = String(localized: "Allow Still to add photos in Settings › Apps › Still › Photos.", bundle: #bundle)
     #endif
 
     private static func detail(of error: Error, fallback: String) -> String {

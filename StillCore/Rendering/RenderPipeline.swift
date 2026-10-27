@@ -65,7 +65,7 @@ public enum RenderPipelineError: Error, LocalizedError {
     case compositionTrackUnavailable
 
     public var errorDescription: String? {
-        "The video couldn’t be prepared for rendering."
+        String(localized: "The video couldn’t be prepared for rendering.", bundle: #bundle)
     }
 }
 

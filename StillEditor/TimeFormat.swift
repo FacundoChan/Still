@@ -32,22 +32,22 @@ public enum TimeFormat {
         return String(format: "%02d:%05.2f", minutes, rest)
     }
 
+    /// “4.20 s”, with the region’s decimal separator.
     public static func seconds(_ value: Double) -> String {
-        String(format: "%.2f s", value)
+        String(localized: "\(value, format: .number.precision(.fractionLength(2))) s", bundle: #bundle, comment: "A time in seconds")
     }
 
     /// “1 s”, “4.2 s”: slider end labels.
     public static func shortSeconds(_ value: Double) -> String {
-        let rounded = (value * 10).rounded() / 10
-        return rounded == rounded.rounded() ? "\(Int(rounded)) s" : String(format: "%.1f s", rounded)
+        String(localized: "\(value, format: .number.precision(.fractionLength(0...1))) s", bundle: #bundle, comment: "A time in seconds")
     }
 
     public static func fieldSeconds(_ value: Double) -> String {
         String(format: "%.2f", value)
     }
 
+    /// “1×”, “0.5×”, with the region’s decimal separator.
     public static func speed(_ value: Double) -> String {
-        let text = value.rounded() == value ? String(Int(value)) : String(value)
-        return "\(text)×"
+        value.formatted(.number.precision(.fractionLength(0...2))) + "×"
     }
 }

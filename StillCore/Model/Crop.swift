@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// An aspect-ratio choice for the crop.
 public enum CropAspect: Hashable, Sendable {
@@ -20,10 +21,11 @@ public enum CropAspect: Hashable, Sendable {
 
     public var title: String {
         switch self {
-        case .original: "Original"
-        case .freeform: "Freeform"
+        case .original: String(localized: "Original", bundle: #bundle, comment: "Crop ratio: the video’s own")
+        case .freeform: String(localized: "Freeform", bundle: #bundle, comment: "Crop ratio: any shape")
         case let .ratio(width, height): "\(Self.format(width)):\(Self.format(height))"
-        case let .custom(width, height): "Custom \(Self.format(width)):\(Self.format(height))"
+        case let .custom(width, height):
+            String(localized: "Custom \(Self.format(width)):\(Self.format(height))", bundle: #bundle, comment: "Crop ratio the user typed, such as Custom 5:4")
         }
     }
 

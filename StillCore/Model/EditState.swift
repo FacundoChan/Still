@@ -14,11 +14,11 @@ public enum EditNotice: Sendable, Equatable {
     public var message: String {
         switch self {
         case .keyPhotoMovedInsideSelection:
-            "Key Photo moved inside the selection."
+            String(localized: "Key Photo moved inside the selection.", bundle: #bundle)
         case let .durationLimit(range):
-            String(format: "A Live Photo can be %.0f to %.0f seconds long.", range.lowerBound, range.upperBound)
+            String(localized: "A Live Photo can be \(range.lowerBound, format: .decimals(0)) to \(range.upperBound, format: .decimals(0)) seconds long.", bundle: #bundle)
         case let .selectionResizedForSpeed(range):
-            String(format: "Selection resized to keep the Live Photo between %.0f and %.0f seconds.", range.lowerBound, range.upperBound)
+            String(localized: "Selection resized to keep the Live Photo between \(range.lowerBound, format: .decimals(0)) and \(range.upperBound, format: .decimals(0)) seconds.", bundle: #bundle)
         }
     }
 }
@@ -34,15 +34,15 @@ public enum EditRejection: Error, Sendable, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .sourceTooShort(seconds, minimum):
-            String(format: "This video is %.2f s long. A Live Photo needs at least %.1f s of video.", seconds, minimum)
+            String(localized: "This video is \(seconds, format: .decimals(2)) s long. A Live Photo needs at least \(minimum, format: .decimals(1)) s of video.", bundle: #bundle)
         case let .needsMoreSource(required, available):
-            String(format: "Needs %.1f s of video; this one is %.1f s.", required, available)
+            String(localized: "Needs \(required, format: .decimals(1)) s of video; this one is \(available, format: .decimals(1)) s.", bundle: #bundle)
         case let .durationOutOfRange(_, range):
-            String(format: "Choose a duration from %.0f to %.0f seconds.", range.lowerBound, range.upperBound)
+            String(localized: "Choose a duration from \(range.lowerBound, format: .decimals(0)) to \(range.upperBound, format: .decimals(0)) seconds.", bundle: #bundle)
         case let .unsupportedSpeed(speed):
-            "\(speed)× isn’t a supported speed."
+            String(localized: "\(speed, format: .number)× isn’t a supported speed.", bundle: #bundle)
         case .invalidAspectRatio:
-            "Enter a positive width and height."
+            String(localized: "Enter a positive width and height.", bundle: #bundle)
         }
     }
 }

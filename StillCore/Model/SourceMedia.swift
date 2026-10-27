@@ -8,9 +8,9 @@ public enum SourceMediaError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .noVideoTrack:
-            "This file doesn’t contain a video track that can be decoded."
+            String(localized: "This file doesn’t contain a video track that can be decoded.", bundle: #bundle)
         case let .unreadable(underlying):
-            "The video couldn’t be read. \(underlying.localizedDescription)"
+            String(localized: "The video couldn’t be read. \(underlying.localizedDescription)", bundle: #bundle)
         }
     }
 }

@@ -8,9 +8,10 @@ public enum PhotosSaveError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .accessDenied:
-            "Still doesn’t have permission to add to your Photos library."
+            String(localized: "Still doesn’t have permission to add to your Photos library.", bundle: #bundle)
         case let .saveFailed(error):
-            ["Photos couldn’t save the Live Photo.", error?.localizedDescription].compactMap(\.self).joined(separator: " ")
+            [String(localized: "Photos couldn’t save the Live Photo.", bundle: #bundle), error?.localizedDescription]
+                .compactMap(\.self).joined(separator: " ")
         }
     }
 

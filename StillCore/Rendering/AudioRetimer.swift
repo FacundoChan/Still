@@ -7,7 +7,7 @@ public enum AudioRetimingError: Error, LocalizedError {
     case bufferCreationFailed(OSStatus)
 
     public var errorDescription: String? {
-        "The sound couldn’t be prepared."
+        String(localized: "The sound couldn’t be prepared.", bundle: #bundle)
     }
 }
 
