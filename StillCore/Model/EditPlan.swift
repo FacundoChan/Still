@@ -135,6 +135,8 @@ public struct EditPlan: Sendable, Equatable {
     public var output: OutputSettings
     /// The location written into the Live Photo, or nil for none. The date and camera always carry over.
     public var location: CaptureLocation?
+    /// Captions drawn into the video, or nil for none. The Key Photo never has them.
+    public var captions: BurnedCaptions?
 
     public init(
         selection: CMTimeRange,
@@ -143,7 +145,8 @@ public struct EditPlan: Sendable, Equatable {
         includesAudio: Bool = true,
         crop: CGRect = CropGeometry.fullFrame,
         output: OutputSettings = .standard,
-        location: CaptureLocation? = nil
+        location: CaptureLocation? = nil,
+        captions: BurnedCaptions? = nil
     ) {
         self.selection = selection
         self.speed = speed
@@ -152,6 +155,7 @@ public struct EditPlan: Sendable, Equatable {
         self.crop = crop
         self.output = output
         self.location = location
+        self.captions = captions
     }
 
     /// A selection of `duration` source seconds starting at `start`, with the Key Photo in its middle.

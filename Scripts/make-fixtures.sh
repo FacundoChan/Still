@@ -107,6 +107,23 @@ make av-sync-30fps-8s.mov \
   -f lavfi -i "aevalsrc='if(lt(mod(t\,1)\,0.1)\,0.8*sin(2*PI*1000*t)\,0)':s=48000:d=8" \
   "${X264[@]}" "${AAC[@]}" -shortest
 
+# Speech for captions: three sentences spoken by macOS's own voice over a plain dark frame, so drawn captions stand out.
+SPEECH="$OUT/.speech.aiff"
+if [[ ! -f "$OUT/speech-sdr-30fps-6s.mov" || ! -f "$OUT/speech-hdr-hlg-30fps-6s.mov" || "$FORCE" == "--force" ]]; then
+  say -v Samantha -r 175 -o "$SPEECH" \
+    "Hello there. This is a test of captions in a Live Photo. Do you see the boats out on the water?"
+fi
+make speech-sdr-30fps-6s.mov \
+  -f lavfi -i "color=c=0x303030:size=1280x720:rate=30:duration=6" -i "$SPEECH" \
+  "${X264[@]}" "${AAC[@]}" -af apad -t 6
+make speech-hdr-hlg-30fps-6s.mov \
+  -f lavfi -i "color=c=0x303030:size=1280x720:rate=30:duration=6" -i "$SPEECH" \
+  -vf "format=yuv420p" -c:v libx265 -preset veryfast -crf 22 -pix_fmt yuv420p10le -tag:v hvc1 \
+  -color_primaries bt2020 -color_trc arib-std-b67 -colorspace bt2020nc \
+  -x265-params "log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc" \
+  "${AAC[@]}" -af apad -t 6
+rm -f "$SPEECH"
+
 make long-10min.mov \
   -f lavfi -i "testsrc=size=640x360:rate=30:duration=600" -f lavfi -i "$(tone 330 600)" \
   -c:v libx264 -preset ultrafast -crf 32 -pix_fmt yuv420p "${COLOR[@]}" -c:a aac -b:a 64k -shortest

@@ -190,4 +190,24 @@ extension DynamicRange {
     var pixelFormat: OSType {
         self == .high ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
     }
+
+    /// Makes sure Core Image interprets a frame in the composition's color, even if the compositor left a color
+    /// attachment out.
+    func tag(_ buffer: CVPixelBuffer) {
+        let attachments: [(CFString, CFString)] = switch self {
+        case .standard: [
+            (kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2),
+            (kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2),
+            (kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2),
+        ]
+        case .high: [
+            (kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_2020),
+            (kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_2100_HLG),
+            (kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_2020),
+        ]
+        }
+        for (key, value) in attachments where CVBufferCopyAttachment(buffer, key, nil) == nil {
+            CVBufferSetAttachment(buffer, key, value, .shouldPropagate)
+        }
+    }
 }

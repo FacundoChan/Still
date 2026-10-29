@@ -30,6 +30,17 @@ public final class PlaybackController {
             for player in sourcePlayers + [selectionPlayer] { applySubtitles(to: player.currentItem) }
         }
     }
+    /// The subtitles the video on the stage offers, such as “English (US) Transcribed”.
+    public private(set) var subtitleOptions: [SubtitleOption] = []
+    /// The subtitles shown while they're on.
+    public private(set) var shownSubtitles: SubtitleOption?
+    /// The subtitles chosen, by `SubtitleOption.id`. Nil, or a choice the video doesn't offer, takes the generated ones.
+    public var subtitleChoice: String? {
+        didSet {
+            guard subtitleChoice != oldValue else { return }
+            for player in sourcePlayers + [selectionPlayer] { applySubtitles(to: player.currentItem) }
+        }
+    }
 
     /// Called with the source time being shown while playing.
     @ObservationIgnored public var onPlaybackTime: ((Double) -> Void)?
@@ -265,16 +276,21 @@ public final class PlaybackController {
 
     // MARK: - Subtitles
 
-    /// Selects the item's generated subtitle option, or none. Only a composition with a single sound track offers one,
-    /// which is how the render pipeline builds them.
+    /// Selects the item's chosen subtitle option, else its generated one, or none. Only a composition with a single
+    /// sound track offers one, which is how the render pipeline builds them.
     private func applySubtitles(to item: AVPlayerItem?) {
         guard let item else { return }
         let shows = showsSubtitles
+        let choice = subtitleChoice
         Task { [weak self] in
             let group = try? await item.asset.loadMediaSelectionGroup(for: .legible)
-            let option = group?.options.first { $0.hasMediaCharacteristic(.machineGenerated) } ?? group?.options.first
+            let options = group?.options ?? []
+            let option = options.first { SubtitleOption($0).id == choice }
+                ?? options.first { $0.hasMediaCharacteristic(.machineGenerated) } ?? options.first
             if let self, item === self.sourcePlayer.currentItem || item === self.sourcePlayers[1 - self.activeSource].currentItem {
                 self.subtitlesAvailable = option != nil
+                self.subtitleOptions = options.map(SubtitleOption.init)
+                self.shownSubtitles = option.map(SubtitleOption.init)
             }
             guard let group else { return }
             item.select(shows ? option : nil, in: group)
@@ -328,5 +344,21 @@ public final class PlaybackController {
             #endif
             isPlaying = false
         }
+    }
+}
+
+/// Subtitles a video offers: a language, transcribed from its speech or carried in the file.
+public struct SubtitleOption: Identifiable, Equatable, Sendable {
+    /// The language as a BCP 47 tag, or the option's name when it has none.
+    public let id: String
+    /// As Photos names it, such as “English (US) Transcribed”.
+    public let name: String
+    /// The language, as a BCP 47 tag.
+    public let language: String?
+
+    init(_ option: AVMediaSelectionOption) {
+        language = option.extendedLanguageTag ?? option.locale?.identifier(.bcp47)
+        name = option.displayName
+        id = language ?? name
     }
 }

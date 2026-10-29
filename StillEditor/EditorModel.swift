@@ -25,6 +25,13 @@ public final class EditorModel {
     public private(set) var savedState: EditState?
     /// Whether the video has gone to Photos as a Live Photo since it opened.
     public private(set) var hasSavedToPhotos = false
+    /// What the video says, word by word, once transcribed: the words of the captions drawn into the Live Photo.
+    public private(set) var transcript: Transcript?
+    public private(set) var isTranscribing = false
+    /// Why the video's speech couldn't be transcribed.
+    public private(set) var transcriptionFailure: String?
+    /// The system's caption style, which captions drawn into the Live Photo take.
+    public private(set) var captionStyle = CaptionStyle.current
 
     public var isCropMode = false {
         didSet {
@@ -71,6 +78,9 @@ public final class EditorModel {
     @ObservationIgnored private var previewAudioURL: URL?
     /// What the source player shows, so an unchanged preview isn't rebuilt.
     @ObservationIgnored private var sourcePreviewPlan: EditPlan?
+    @ObservationIgnored private var transcription: Task<Void, Never>?
+    /// The language of the transcript, or of the transcription under way; empty while it's being worked out.
+    @ObservationIgnored private var transcriptionLanguage: String?
 
     public init() {
         playback.onPlaybackTime = { [weak self] time in
@@ -149,6 +159,7 @@ public final class EditorModel {
             state = initial
             savedState = initial
             hasSavedToPhotos = false
+            resetTranscript()
             playhead = 0
             sourcePreviewPlan = nil
             detailFollowsPlayhead = true
@@ -159,6 +170,7 @@ public final class EditorModel {
             phase = .ready
             refreshSourcePreview()
             scheduleRenders()
+            transcribeIfNeeded()
         } catch {
             source = nil
             state = nil
@@ -253,6 +265,7 @@ public final class EditorModel {
 
     private func didCommit(from previous: EditState) {
         guard let state else { return }
+        transcribeIfNeeded()
         let colorChanged = previous.output.dynamicRange != state.output.dynamicRange
         if (previous.cropRect != state.cropRect && !isCropMode) || colorChanged {
             refreshSourcePreview()
@@ -354,6 +367,13 @@ public final class EditorModel {
         UserDefaults.standard.set(include, forKey: Self.locationKey)
     }
 
+    public func setIncludesCaptions(_ include: Bool) {
+        edit(include ? "Add Captions" : "Remove Captions") { $0.setIncludesCaptions(include) }
+        UserDefaults.standard.set(include, forKey: Self.captionsKey)
+        // Turning captions on again tries again after a transcription that failed.
+        if include { transcribeIfNeeded(retrying: true) }
+    }
+
     public func chooseLocation(_ location: CaptureLocation) {
         edit("Choose Location") { $0.chooseLocation(location) }
     }
@@ -375,12 +395,14 @@ public final class EditorModel {
             state.setHDR(defaults.bool(forKey: hdrKey))
         }
         state.setIncludesLocation(defaults.bool(forKey: locationKey))
+        state.setIncludesCaptions(defaults.bool(forKey: captionsKey))
     }
 
     private static let resolutionKey = "OutputResolution"
     private static let bitRateKey = "VideoBitRate"
     private static let hdrKey = "HDR"
     private static let locationKey = "IncludesLocation"
+    private static let captionsKey = "IncludesCaptions"
 
     /// Choosing a ratio enters Crop mode.
     public func setCropAspect(_ aspect: CropAspect) {
@@ -562,8 +584,93 @@ public final class EditorModel {
     /// Rebuilds the selection player and the Live Photo preview once edits settle.
     private func scheduleRenders(includingSelection: Bool = true) {
         guard let source, let state else { return }
-        livePreview.schedule(state.plan, source: source, longEdge: stageLongEdge)
+        livePreview.schedule(plan(for: state), source: source, longEdge: stageLongEdge)
         if includingSelection { scheduleSelectionPreview() }
+    }
+
+    // MARK: - Captions
+
+    /// What `state` renders: its plan, with its captions once the words are known, in the current caption style.
+    public func plan(for state: EditState) -> EditPlan {
+        var plan = state.plan
+        if state.includesCaptions, let transcript {
+            let spoken = transcript.phrases(overlapping: state.selectionStart...state.selectionEnd)
+            plan.captions = BurnedCaptions(phrases: spoken, style: captionStyle)
+        }
+        return plan
+    }
+
+    /// Whether anything is said during the selection; nil until the speech is transcribed.
+    public var selectionHasSpeech: Bool? {
+        guard let state, let transcript else { return nil }
+        return !transcript.phrases(overlapping: state.selectionStart...state.selectionEnd).isEmpty
+    }
+
+    /// Reads the system's caption style again, after a change in the captions menu or in Settings.
+    public func refreshCaptionStyle() {
+        let style = CaptionStyle.current
+        guard style != captionStyle else { return }
+        captionStyle = style
+        if state?.includesCaptions == true, transcript != nil { scheduleRenders(includingSelection: false) }
+    }
+
+    /// Waits for a transcription under way, so a Live Photo with captions is made with them.
+    public func captionsReady() async {
+        await transcription?.value
+    }
+
+    /// Transcribes the video's speech while the edit includes captions, unless that's done, under way, or failed in
+    /// the same language without `retrying`. The words are in the language of the stage's subtitles, so the captions
+    /// say what the stage shows.
+    public func transcribeIfNeeded(retrying: Bool = false) {
+        guard let source, state?.includesCaptions == true, source.audioTrack != nil else { return }
+        let shown = playback.shownSubtitles?.language
+        if let transcriptionLanguage, transcriptionFailure == nil || !retrying, shown == nil || shown == transcriptionLanguage {
+            return
+        }
+        transcription?.cancel()
+        transcript = nil
+        transcriptionFailure = nil
+        isTranscribing = true
+        transcriptionLanguage = shown ?? ""
+        transcription = Task { [weak self] in
+            var language = shown
+            if language == nil { language = await Self.generatedSubtitleLanguage(of: source) }
+            let tag = language ?? Locale.current.identifier(.bcp47)
+            guard let self, !Task.isCancelled else { return }
+            transcriptionLanguage = tag
+            do {
+                guard let locale = await SpeechTranscription.supportedLanguage(for: tag) else {
+                    throw SpeechTranscriptionError.unsupportedLanguage(tag)
+                }
+                let transcript = try await SpeechTranscription.transcribe(source, language: locale)
+                guard !Task.isCancelled else { return }
+                self.transcript = transcript
+                scheduleRenders(includingSelection: false)
+            } catch {
+                guard !Task.isCancelled else { return }
+                transcriptionFailure = error.localizedDescription
+            }
+            isTranscribing = false
+        }
+    }
+
+    private func resetTranscript() {
+        transcription?.cancel()
+        transcription = nil
+        transcriptionLanguage = nil
+        transcript = nil
+        transcriptionFailure = nil
+        isTranscribing = false
+    }
+
+    /// The language the system transcribes the video's speech in for its own subtitles, before the stage has asked.
+    private static func generatedSubtitleLanguage(of source: SourceMedia) async -> String? {
+        let whole = EditPlan(selection: CMTimeRange(start: .zero, duration: source.duration), keyPhotoSourceTime: .zero)
+        guard let graph = try? RenderPipeline.build(source: source, plan: whole),
+              let group = try? await graph.composition.loadMediaSelectionGroup(for: .legible) else { return nil }
+        let option = group.options.first { $0.hasMediaCharacteristic(.machineGenerated) } ?? group.options.first
+        return option.flatMap { $0.extendedLanguageTag ?? $0.locale?.identifier(.bcp47) }
     }
 
     private func scheduleSelectionPreview() {
@@ -631,7 +738,9 @@ public final class EditorModel {
         livePreview.stop()
         return Task {
             guard let source else { return false }
-            let outcome = await export.run(destination, plan: snapshot.plan, source: source, name: sourceName)
+            // Captions need their words: a transcription under way finishes first.
+            if snapshot.includesCaptions { await captionsReady() }
+            let outcome = await export.run(destination, plan: plan(for: snapshot), source: source, name: sourceName)
             guard case let .saved(destination) = outcome else { return false }
             savedState = snapshot
             switch destination {
@@ -661,6 +770,7 @@ public final class EditorModel {
         export.cancel()
         selectionPreviewTask?.cancel()
         noticeTask?.cancel()
+        resetTranscript()
         playback.tearDown()
         livePreview.reset()
         if let previewAudioURL { try? FileManager.default.removeItem(at: previewAudioURL) }

@@ -32,6 +32,8 @@ final class MovieRenderSession: @unchecked Sendable {
     private let keyPhotoFrameIndex: Int64
     private let keyPhotoURL: URL
     private let dynamicRange: DynamicRange
+    /// Captions to draw into the movie; nil leaves its frames as the compositor made them.
+    private let captions: CaptionOverlay?
     private let capture: CaptureStamp
     private let contentIdentifier: String
     private let progress: (@Sendable (LivePhotoExportStage) -> Void)?
@@ -48,6 +50,7 @@ final class MovieRenderSession: @unchecked Sendable {
     private var videoError: Error?
     private var keyPhotoPresentationTime: CMTime = .invalid
     private var keyPhotoWriter: KeyPhotoWriter?
+    private var captionCompositor: CaptionCompositor?
     // audioQueue only
     private var audioFinished = false
     private var nextAudioBuffer = 0
@@ -75,6 +78,9 @@ final class MovieRenderSession: @unchecked Sendable {
         keyPhotoFrameIndex = plan.keyPhotoFrameIndex
         self.keyPhotoURL = keyPhotoURL
         dynamicRange = plan.output.dynamicRange
+        captions = plan.captions
+            .map { CaptionOverlay($0, plan: plan, renderSize: graph.renderSize) }
+            .flatMap { $0.cues.isEmpty ? nil : $0 }
         self.contentIdentifier = contentIdentifier
         self.progress = progress
 
@@ -234,12 +240,26 @@ final class MovieRenderSession: @unchecked Sendable {
                 return
             }
             if nextFrameIndex == keyPhotoFrameIndex {
+                // From the frame as it is: the Key Photo is a photo, and captions belong to the motion.
                 captureKeyPhoto(from: frame, at: time)
             }
-            pendingFrames.append(frame)
+            pendingFrames.append(captioned(frame, at: time))
             nextFrameIndex += 1
         }
         progress?(.rendering(Double(nextFrameIndex) / Double(max(frameCount, 1))))
+    }
+
+    /// `frame` with the caption showing at `time` drawn over it, or `frame` itself when none is.
+    private func captioned(_ frame: CMSampleBuffer, at time: CMTime) -> CMSampleBuffer {
+        guard let cue = captions?.cue(at: time.seconds) else { return frame }
+        do {
+            let compositor = captionCompositor ?? CaptionCompositor(dynamicRange: dynamicRange)
+            captionCompositor = compositor
+            return try compositor.draw(cue, over: frame)
+        } catch {
+            videoError = error
+            return frame
+        }
     }
 
     private func captureKeyPhoto(from sample: CMSampleBuffer, at time: CMTime) {

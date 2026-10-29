@@ -77,6 +77,9 @@ public struct EditState: Sendable, Equatable {
     public private(set) var includesLocation = false
     /// A location the user chose, replacing the video's own.
     public private(set) var chosenLocation: CaptureLocation?
+    /// Captions of what's said, drawn into the video. The words come from transcribing the sound, which the editor
+    /// does; the plan carries them only once they're known.
+    public private(set) var includesCaptions = false
 
     /// The initial editing state for a newly opened source.
     public init(source: SourceInfo, output: OutputSettings = .standard) throws {
@@ -191,6 +194,9 @@ public struct EditState: Sendable, Equatable {
     }
 
     public var canIncludeAudio: Bool { source.hasAudio }
+
+    /// Captions come from the video's speech, whether or not the Live Photo keeps the sound.
+    public var canIncludeCaptions: Bool { source.hasAudio }
 
     public var canUseHDR: Bool { source.isHDR }
 
@@ -375,6 +381,11 @@ public struct EditState: Sendable, Equatable {
     /// Ignored for sources without audio.
     public mutating func setIncludesAudio(_ include: Bool) {
         includesAudio = include && source.hasAudio
+    }
+
+    /// Ignored for sources without audio, which have nothing to caption.
+    public mutating func setIncludesCaptions(_ include: Bool) {
+        includesCaptions = include && canIncludeCaptions
     }
 
     // MARK: - Output

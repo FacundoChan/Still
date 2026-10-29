@@ -13,7 +13,7 @@ struct KeyPhotoWriter {
     private let context = CIContext(options: [.cacheIntermediates: false])
 
     func write(_ pixelBuffer: CVPixelBuffer, to url: URL, contentIdentifier: String) throws {
-        tagColor(pixelBuffer)
+        dynamicRange.tag(pixelBuffer)
         let image = CIImage(cvPixelBuffer: pixelBuffer)
         var properties = LivePhotoMetadata.imageProperties(contentIdentifier: contentIdentifier, quality: 0.92)
             .merging(capture.imageProperties) { kept, _ in kept }
@@ -36,26 +36,6 @@ struct KeyPhotoWriter {
         CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             throw LivePhotoExportError.keyPhotoEncodingFailed
-        }
-    }
-
-    /// Makes sure Core Image interprets the buffer in the composition's color, even if the compositor left a
-    /// color attachment out.
-    private func tagColor(_ buffer: CVPixelBuffer) {
-        let attachments: [(CFString, CFString)] = switch dynamicRange {
-        case .standard: [
-            (kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2),
-            (kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2),
-            (kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2),
-        ]
-        case .high: [
-            (kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_2020),
-            (kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_2100_HLG),
-            (kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_2020),
-        ]
-        }
-        for (key, value) in attachments where CVBufferCopyAttachment(buffer, key, nil) == nil {
-            CVBufferSetAttachment(buffer, key, value, .shouldPropagate)
         }
     }
 }
