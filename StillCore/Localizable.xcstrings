@@ -1,6 +1,162 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Choose at least two Live Photos to join." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wähle mindestens zwei Live Photos zum Zusammenfügen aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Elige al menos dos Live Photos para unirlas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Choisissez au moins deux Live Photos à assembler."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "つなげるLive Photoを2枚以上選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "합칠 Live Photo를 두 개 이상 선택하십시오."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Escolha pelo menos duas Live Photos para juntar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请至少选择两张要合并的实况照片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請至少選擇兩張要合併的原況照片。"
+          }
+        }
+      }
+    },
+    "The Live Photos couldn’t be joined." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Live Photos konnten nicht zusammengefügt werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "No se pudieron unir las Live Photos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impossible d’assembler les Live Photos."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Live Photoをつなげられませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Live Photo를 합칠 수 없습니다."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Não foi possível juntar as Live Photos."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "无法合并实况照片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "無法合併原況照片。"
+          }
+        }
+      }
+    },
+    "These Live Photos can’t be joined, because iPhone wasn’t held the same way for all of them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Live Photos können nicht zusammengefügt werden, weil das iPhone nicht bei allen gleich gehalten wurde."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Estas Live Photos no se pueden unir porque el iPhone no se sostuvo de la misma forma en todas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impossible d’assembler ces Live Photos, car l’iPhone n’était pas tenu de la même façon pour toutes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "すべてのLive Photoで同じ向きにiPhoneを持っていなかったため、つなげることができません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "모든 Live Photo를 같은 방향으로 iPhone을 들고 찍지 않았기 때문에 합칠 수 없습니다."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Não é possível juntar estas Live Photos porque o iPhone não foi segurado da mesma forma em todas."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "无法合并这些实况照片，因为拍摄时 iPhone 的握持方向不一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "無法合併這些原況照片，因為拍攝時 iPhone 的握持方向不一致。"
+          }
+        }
+      }
+    },
     "“%@” already exists." : {
       "localizations" : {
         "de" : {

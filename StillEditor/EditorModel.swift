@@ -123,7 +123,9 @@ public final class EditorModel {
 
     // MARK: - Opening
 
-    public func load(_ url: URL) async {
+    /// Opens a video. `selectingAll` selects all of it, up to the longest Live Photo, rather than the first few
+    /// seconds, as for Live Photos joined to be seen together.
+    public func load(_ url: URL, selectingAll: Bool = false) async {
         phase = .loading
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = url.startAccessingSecurityScopedResource() ? url : nil
@@ -131,6 +133,10 @@ public final class EditorModel {
             let media = try await SourceMedia.load(url)
             var initial = try EditState(source: media.info)
             Self.applyRememberedOutput(to: &initial)
+            if selectingAll {
+                initial.setSelectionEnd(media.info.duration)
+                initial.setKeyPhoto(at: (initial.selectionStart + initial.selectionEnd) / 2)
+            }
             if let previous = source, previous.url != url { TemporaryFiles.removeImportedCopy(previous.url) }
             source = media
             sourceName = url.lastPathComponent

@@ -21,3 +21,6 @@ Fixtures/real/*.mov
 # Working notes kept locally: the product spec, decision log, acceptance report and manual checklist
 goal.md
 docs/*.md
+
+# Runs of iPhone Live Photos for the joining tests: they contain location metadata
+Fixtures/real/live-photos/

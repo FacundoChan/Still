@@ -140,7 +140,7 @@ public enum LivePhotoInspector {
         )
     }
 
-    private static func stillImageTime(in asset: AVAsset) async throws -> CMTime? {
+    static func stillImageTime(in asset: AVAsset) async throws -> CMTime? {
         for track in try await asset.loadTracks(withMediaType: .metadata) {
             let reader = try AVAssetReader(asset: asset)
             let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
