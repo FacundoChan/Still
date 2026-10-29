@@ -24,6 +24,17 @@ public struct LivePhotoJoin: Sendable {
     public let seams: [LivePhotoSeam]
 }
 
+/// Live Photos taken one after another, held the same way: each one's movie overlaps the one before, or starts a few
+/// seconds after it at most.
+public struct LivePhotoMoment: Sendable {
+    /// In the order they were taken.
+    public let shots: [LivePhotoShot]
+    /// When the first one's movie starts, as far as the photos or movies say.
+    public let date: Date?
+    /// About how long their joined movie runs, in seconds.
+    public let duration: Double
+}
+
 /// How one shot's movie runs into the next one's.
 public enum LivePhotoSeam: Sendable, Equatable {
     /// The movies share frames, and the join falls on one of them.
@@ -63,31 +74,8 @@ public enum LivePhotoJoinError: Error, LocalizedError {
 public enum LivePhotoJoiner {
     public static func join(_ shots: [LivePhotoShot], to destination: URL) async throws -> LivePhotoJoin {
         guard shots.count > 1 else { throw LivePhotoJoinError.notEnoughShots }
-        // A few at a time: each decodes its whole movie, and a phone has only so many decoders.
-        var loaded = try await withThrowingTaskGroup(of: (Int, Shot).self) { group in
-            var results: [(Int, Shot)] = []
-            var next = 0
-            func loadNext() {
-                guard next < shots.count else { return }
-                let (index, shot) = (next, shots[next])
-                group.addTask { (index, try await Shot.load(shot)) }
-                next += 1
-            }
-            for _ in 0..<simultaneousLoads { loadNext() }
-            for try await result in group {
-                results.append(result)
-                loadNext()
-            }
-            return results.sorted { $0.0 < $1.0 }.map(\.1)
-        }
-        // The order they were taken in, when each says when; otherwise the order they were chosen in.
-        if loaded.allSatisfy({ $0.start != nil }) {
-            loaded = loaded.enumerated().sorted { ($0.element.start!, $0.offset) < ($1.element.start!, $1.offset) }.map(\.element)
-        }
-        let first = loaded[0].source
-        guard loaded.allSatisfy({
-            $0.source.naturalSize == first.naturalSize && $0.source.preferredTransform == first.preferredTransform
-        }) else {
+        let loaded = try await inOrder(load(shots, decodingFrames: true))
+        guard loaded.allSatisfy({ $0.isFramed(like: loaded[0]) }) else {
             throw LivePhotoJoinError.differentFraming
         }
 
@@ -114,7 +102,84 @@ public enum LivePhotoJoiner {
         return LivePhotoJoin(url: destination, shots: loaded.map(\.shot), seams: seams)
     }
 
+    /// Sorts Live Photos into moments, in the order they were taken. A shot belongs to the moment before it when it was
+    /// held the same way and its movie starts at most `maximumGap` seconds after the moment's last one ends, as when a
+    /// shot in between wasn't chosen; a shot that doesn't say when it was taken is a moment of its own.
+    ///
+    /// Reads only what the files say about themselves, so it's quick; frames are matched when a moment is joined.
+    public static func moments(of shots: [LivePhotoShot]) async throws -> [LivePhotoMoment] {
+        var moments: [[Shot]] = []
+        var momentEnd: Date?
+        for shot in try await inOrder(load(shots, decodingFrames: false)) {
+            if let start = shot.start, let end = momentEnd, let last = moments.last?.last, shot.isFramed(like: last),
+               start.timeIntervalSince(end) <= maximumGap {
+                moments[moments.count - 1].append(shot)
+                momentEnd = max(end, shot.end ?? end)
+            } else {
+                moments.append([shot])
+                momentEnd = shot.end
+            }
+        }
+        return moments.map { shots in
+            LivePhotoMoment(shots: shots.map(\.shot), date: shots[0].start, duration: duration(of: shots))
+        }
+    }
+
+    /// The longest a moment skips between one movie's end and the next one's start.
+    public static let maximumGap = 3.0
+
+    /// How much later the photos' times put a movie that overlaps the one before than its shared frames do: 0.07 to
+    /// 0.12 seconds, measured on an iPhone 17 Pro Max.
+    private static let photoTimeLead = 0.1
+
+    /// The time the movies cover between them: what they share plays once, and a gap is cut out.
+    private static func duration(of shots: [Shot]) -> Double {
+        var total = 0.0
+        var coveredUntil: Date?
+        for shot in shots {
+            guard let start = shot.start, let end = shot.end else {
+                total += shot.videoRange.duration.seconds
+                continue
+            }
+            if let coveredUntil, start < coveredUntil {
+                total += max(0, end.timeIntervalSince(coveredUntil) - photoTimeLead)
+            } else {
+                total += end.timeIntervalSince(start)
+            }
+            coveredUntil = max(coveredUntil ?? end, end)
+        }
+        return total
+    }
+
+    // MARK: - Reading
+
+    /// A few at a time: decoding reads a whole movie, and a phone has only so many decoders.
     private static let simultaneousLoads = 3
+
+    private static func load(_ shots: [LivePhotoShot], decodingFrames: Bool) async throws -> [Shot] {
+        try await withThrowingTaskGroup(of: (Int, Shot).self) { group in
+            var results: [(Int, Shot)] = []
+            var next = 0
+            func loadNext() {
+                guard next < shots.count else { return }
+                let (index, shot) = (next, shots[next])
+                group.addTask { (index, try await Shot.load(shot, decodingFrames: decodingFrames)) }
+                next += 1
+            }
+            for _ in 0..<simultaneousLoads { loadNext() }
+            for try await result in group {
+                results.append(result)
+                loadNext()
+            }
+            return results.sorted { $0.0 < $1.0 }.map(\.1)
+        }
+    }
+
+    /// The order they were taken in, when each says when; otherwise the order they were chosen in.
+    private static func inOrder(_ shots: [Shot]) -> [Shot] {
+        guard shots.allSatisfy({ $0.start != nil }) else { return shots }
+        return shots.enumerated().sorted { ($0.element.start!, $0.offset) < ($1.element.start!, $1.offset) }.map(\.element)
+    }
 
     // MARK: - Lining up
 
@@ -266,10 +331,18 @@ private struct Shot: @unchecked Sendable {
     let start: Date?
     /// Whether `start` comes from the photo, to the millisecond, rather than the movie's date, to the second.
     let startIsPrecise: Bool
-    /// In time order.
+    /// In time order; empty when they weren't asked for.
     let frames: [Frame]
 
-    static func load(_ shot: LivePhotoShot) async throws -> Shot {
+    /// When the movie's last frame ends.
+    var end: Date? { start?.addingTimeInterval(videoRange.end.seconds) }
+
+    /// Whether the two were held the same way, at the same size, so their movies can play as one.
+    func isFramed(like other: Shot) -> Bool {
+        source.naturalSize == other.source.naturalSize && source.preferredTransform == other.source.preferredTransform
+    }
+
+    static func load(_ shot: LivePhotoShot, decodingFrames: Bool) async throws -> Shot {
         let source = try await SourceMedia.load(shot.movieURL)
         let videoRange = try await source.videoTrack.load(.timeRange)
         let audioRange = try await source.audioTrack?.load(.timeRange) ?? .zero
@@ -283,7 +356,7 @@ private struct Shot: @unchecked Sendable {
             audioRange: audioRange,
             start: (photoDate ?? source.capture.date)?.addingTimeInterval(-still),
             startIsPrecise: photoDate != nil,
-            frames: try smallFrames(of: source)
+            frames: decodingFrames ? try smallFrames(of: source) : []
         )
     }
 

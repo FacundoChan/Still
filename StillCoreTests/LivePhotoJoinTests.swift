@@ -29,6 +29,50 @@ struct LivePhotoJoinTests {
         #expect(codes == (0..<180).map { $0 })
     }
 
+    /// Pieces dated a second apart make one moment; one dated two minutes later makes its own.
+    @Test func momentsFollowTheDates() async throws {
+        let source = Fixture.root.appending(path: "Fixtures/synthetic/framecode-30fps-6s.mov")
+        try #require(Fixture.isAvailable(source), "Missing \(source.path). Run Scripts/make-fixtures.sh.")
+        let directory = try Self.outputDirectory("moments-framecode")
+        var shots: [LivePhotoShot] = []
+        for (index, (start, second)) in [(3.5, 120), (0, 1), (1.7, 2)].enumerated() {
+            let piece = directory.appending(path: "shot-\(index).mov")
+            try await Self.cut(source, from: start, duration: 2.5, to: piece, dated: second)
+            shots.append(LivePhotoShot(movieURL: piece))
+        }
+        let moments = try await LivePhotoJoiner.moments(of: shots)
+        #expect(moments.map { $0.shots.map(\.movieURL.lastPathComponent) } == [["shot-1.mov", "shot-2.mov"], ["shot-0.mov"]])
+    }
+
+    /// Every run is a moment of its own, however they're chosen, and lasts about as long as its joined movie.
+    @Test(.enabled(if: realRuns.count > 1))
+    func eachRunIsAMoment() async throws {
+        let runs = try Self.realRuns.map(Self.shots(inRun:))
+        let moments = try await LivePhotoJoiner.moments(of: runs.flatMap(\.self).shuffled())
+        let names = { (shots: [LivePhotoShot]) -> [String] in shots.map(\.movieURL.lastPathComponent) }
+        let found: [[String]] = moments.map { names($0.shots) }.sorted { $0[0] < $1[0] }
+        let expected: [[String]] = runs.map(names).sorted { $0[0] < $1[0] }
+        #expect(found == expected)
+        let dates = moments.compactMap(\.date)
+        #expect(dates.count == moments.count && dates == dates.sorted())
+        for (index, moment) in moments.enumerated() {
+            let directory = try Self.outputDirectory("moment-\(index)")
+            let joined = try await LivePhotoJoiner.join(moment.shots, to: directory.appending(path: "joined.mov"))
+            let length = try await SourceMedia.load(joined.url).duration.seconds
+            #expect(abs(moment.duration - length) < 0.5, "estimated \(moment.duration) s, joined \(length) s")
+        }
+    }
+
+    /// Leaving out a shot from the middle of a run leaves a jump of a second or so, which keeps it one moment.
+    @Test(arguments: realRuns)
+    func aMissingShotKeepsTheMoment(_ run: String) async throws {
+        var shots = try Self.shots(inRun: run)
+        try #require(shots.count > 2)
+        shots.remove(at: 1)
+        let moments = try await LivePhotoJoiner.moments(of: shots)
+        #expect(moments.count == 1)
+    }
+
     @Test func needsTwoShots() async throws {
         let source = Fixture.root.appending(path: "Fixtures/synthetic/framecode-30fps-6s.mov")
         await #expect(throws: LivePhotoJoinError.self) {
@@ -44,11 +88,11 @@ struct LivePhotoJoinTests {
         return runs.filter { !$0.hasPrefix(".") }.sorted()
     }()
 
-    @Test(arguments: realRuns)
-    func joinsARunOfLivePhotos(_ run: String) async throws {
+    /// A run's shots, by file name, which is the order they were taken in.
+    static func shots(inRun run: String) throws -> [LivePhotoShot] {
         let folder = Fixture.root.appending(path: "Fixtures/real/live-photos/\(run)")
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-        let shots = files.filter { $0.pathExtension.lowercased() == "mov" }
+        return files.filter { $0.pathExtension.lowercased() == "mov" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .map { movie in
                 LivePhotoShot(movieURL: movie, photoURL: files.first {
@@ -56,6 +100,11 @@ struct LivePhotoJoinTests {
                         && $0.deletingPathExtension().lastPathComponent == movie.deletingPathExtension().lastPathComponent
                 })
             }
+    }
+
+    @Test(arguments: realRuns)
+    func joinsARunOfLivePhotos(_ run: String) async throws {
+        let shots = try Self.shots(inRun: run)
         try #require(shots.count > 1)
 
         // Chosen in reverse; the photos' times put them back in order.

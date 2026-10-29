@@ -23,6 +23,8 @@ public final class EditorModel {
     public private(set) var notice: String?
     /// The edit as it was when the video opened or was last saved or exported.
     public private(set) var savedState: EditState?
+    /// Whether the video has gone to Photos as a Live Photo since it opened.
+    public private(set) var hasSavedToPhotos = false
 
     public var isCropMode = false {
         didSet {
@@ -146,6 +148,7 @@ public final class EditorModel {
             #endif
             state = initial
             savedState = initial
+            hasSavedToPhotos = false
             playhead = 0
             sourcePreviewPlan = nil
             detailFollowsPlayhead = true
@@ -632,7 +635,9 @@ public final class EditorModel {
             guard case let .saved(destination) = outcome else { return false }
             savedState = snapshot
             switch destination {
-            case .photos: show(String(localized: "Saved to Photos", bundle: #bundle))
+            case .photos:
+                hasSavedToPhotos = true
+                show(String(localized: "Saved to Photos", bundle: #bundle))
             #if os(macOS)
             case let .folder(folder): show(String(localized: "Exported “\(folder.lastPathComponent)”", bundle: #bundle))
             #else
