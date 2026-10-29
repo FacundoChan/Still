@@ -264,10 +264,9 @@ enum MediaProbe {
     }
 
     /// The movie’s audio, decoded to mono 32-bit float, or nil if it has no audio track.
-    static func audio(_ url: URL) async throws -> Audio? {
+    static func audio(_ url: URL, sampleRate: Double = 44_100) async throws -> Audio? {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: .audio).first else { return nil }
-        let sampleRate = 44_100.0
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM,

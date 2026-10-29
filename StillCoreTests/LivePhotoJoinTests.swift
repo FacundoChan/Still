@@ -127,6 +127,30 @@ struct LivePhotoJoinTests {
         // Longer than any one shot, shorter than all of them end to end.
         let total = try await shots.asyncMap { try await SourceMedia.load($0.movieURL).duration.seconds }.reduce(0, +)
         #expect(result.duration.seconds > last.duration.seconds && result.duration.seconds < total)
+
+        // The sound blends at each seam rather than jumping, so none clicks, and lasts exactly as long as the picture.
+        let sound = try #require(try await MediaProbe.audio(joined.url, sampleRate: 48_000))
+        let picture = try await result.videoTrack.load(.timeRange).duration.seconds
+        #expect(abs(sound.duration - picture) < 0.002, "sound \(sound.duration) s, picture \(picture) s")
+        let seams = try await result.videoTrack.load(.segments).map(\.timeMapping.target.start.seconds).filter { $0 > 0 }
+        #expect(seams.count == shots.count - 1)
+        for seam in seams {
+            let jump = Self.stepAtSeam(sound, seam)
+            #expect(jump < 2.5, "the sound at \(seam) s steps \(jump) times the loudest steps around it")
+        }
+    }
+
+    /// The biggest sample-to-sample step within 2 ms of `seam`, against the loudest 1% of steps in the 50 ms around
+    /// it. A click stands four to nine times above them; a clean join, about level.
+    private static func stepAtSeam(_ sound: MediaProbe.Audio, _ seam: Double) -> Float {
+        let samples = sound.samples
+        let center = Int(((seam - sound.startTime) * sound.sampleRate).rounded())
+        let near = Int(0.002 * sound.sampleRate), around = Int(0.05 * sound.sampleRate)
+        guard center - around > 0, center + around < samples.count else { return 0 }
+        let step = { (index: Int) in abs(samples[index] - samples[index - 1]) }
+        let biggest = ((center - near)...(center + near)).map(step).max() ?? 0
+        let nearby = ((center - around)..<(center + around)).filter { abs($0 - center) > near }.map(step).sorted()
+        return biggest / max(nearby[nearby.count * 99 / 100], 1e-6)
     }
 
     // MARK: - Helpers

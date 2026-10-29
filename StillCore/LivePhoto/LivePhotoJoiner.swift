@@ -70,7 +70,9 @@ public enum LivePhotoJoinError: Error, LocalizedError {
 /// copies of the frames finds exactly where. The join falls on a frame both movies have, half-way through their
 /// overlap, so picture and sound run on unbroken. Shots that don't overlap simply follow one another.
 ///
-/// The movies are joined as they are, without re-encoding.
+/// The pictures are joined as they are, without re-encoding. So is the sound, but for a short crossfade at each seam:
+/// neighbouring movies hold the same recording but place it 70 to 110 ms apart against their pictures, so sound cut
+/// where the pictures join would jump by that much, and click.
 public enum LivePhotoJoiner {
     public static func join(_ shots: [LivePhotoShot], to destination: URL) async throws -> LivePhotoJoin {
         guard shots.count > 1 else { throw LivePhotoJoinError.notEnoughShots }
@@ -90,15 +92,20 @@ public enum LivePhotoJoiner {
             inPoint = join.in
         }
         segments.append(CMTimeRange(start: inPoint, end: loaded[loaded.count - 1].videoRange.end))
+        let parts = zip(loaded, segments).filter { $0.1.duration > .zero }.map { Part(shot: $0.0, range: $0.1) }
         try Task.checkCancellation()
 
-        let composition = try compose(loaded, segments: segments)
+        let soundURL = URL.temporaryDirectory.appending(path: "StillJoinedSound-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: soundURL) }
+        let sound = try await writeSound(of: parts, to: soundURL) ? AVURLAsset(url: soundURL) : nil
+        let soundTrack = try await sound?.loadTracks(withMediaType: .audio).first
+        let composition = try compose(parts, sound: soundTrack)
         guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) else {
             throw LivePhotoJoinError.exportFailed
         }
         session.metadata = try await metadata(for: loaded[0])
         try await session.export(to: destination, as: .mov)
-        withExtendedLifetime(loaded) {}
+        withExtendedLifetime((loaded, sound)) {}
         return LivePhotoJoin(url: destination, shots: loaded.map(\.shot), seams: seams)
     }
 
@@ -264,28 +271,140 @@ public enum LivePhotoJoiner {
 
     // MARK: - Joining
 
-    private static func compose(_ shots: [Shot], segments: [CMTimeRange]) throws -> AVComposition {
+    /// What one shot plays of its movie, on its own clock.
+    private struct Part {
+        let shot: Shot
+        let range: CMTimeRange
+    }
+
+    /// The parts' pictures end to end, with `sound`, already joined, under them.
+    private static func compose(_ parts: [Part], sound: AVAssetTrack?) throws -> AVComposition {
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw RenderPipelineError.compositionTrackUnavailable
         }
-        video.preferredTransform = shots[0].source.preferredTransform
-        let audio = shots.contains { $0.source.audioTrack != nil }
-            ? composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-            : nil
+        video.preferredTransform = parts[0].shot.source.preferredTransform
         var cursor = CMTime.zero
-        for (shot, segment) in zip(shots, segments) where segment.duration > .zero {
-            try video.insertTimeRange(segment, of: shot.source.videoTrack, at: cursor)
-            // The sound can end a moment before the picture.
-            if let audio, let track = shot.source.audioTrack {
-                let range = segment.intersection(shot.audioRange)
-                if range.duration > .zero {
-                    try audio.insertTimeRange(range, of: track, at: cursor + (range.start - segment.start))
-                }
-            }
-            cursor = cursor + segment.duration
+        for part in parts {
+            try video.insertTimeRange(part.range, of: part.shot.source.videoTrack, at: cursor)
+            cursor = cursor + part.range.duration
+        }
+        if let sound, let audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try audio.insertTimeRange(CMTimeRange(start: .zero, duration: cursor), of: sound, at: .zero)
         }
         return composition
+    }
+
+    // MARK: - Sound
+
+    /// How long each seam's sound blends from one shot into the next.
+    static let crossfade = 0.02
+
+    /// Lays the parts' sound end to end as their pictures are, blending each seam over `crossfade` with equal power,
+    /// and writes it to `url` as 16-bit PCM, as the movies have it, so all but the seams is the recording itself.
+    /// Each shot keeps its sound in step with its pictures. Returns false, writing nothing, when no shot has sound.
+    private static func writeSound(of parts: [Part], to url: URL) async throws -> Bool {
+        guard let first = parts.lazy.compactMap(\.shot.source.audioTrack).first,
+              let description = try await first.load(.formatDescriptions).first?.audioStreamBasicDescription
+        else { return false }
+        let rate = description.mSampleRate
+        // One or two channels, which is all AVAudioFormat's standard layouts allow.
+        let channelCount = min(max(Int(description.mChannelsPerFrame), 1), 2)
+        let sounds = try parts.map { try decodedSound(of: $0.shot, rate: rate, channelCount: channelCount) }
+
+        // Where each part starts in the output, in frames, and how far its shot's own frames sit from the output's.
+        var starts: [Int] = []
+        var shifts: [Int] = []
+        var cursor = 0.0
+        for (part, sound) in zip(parts, sounds) {
+            starts.append(Int((cursor * rate).rounded()))
+            shifts.append(Int(((part.range.start.seconds - cursor - (sound?.start ?? 0)) * rate).rounded()))
+            cursor += part.range.duration.seconds
+        }
+        let frameCount = Int((cursor * rate).rounded())
+        starts.append(frameCount)
+        func frame(_ part: Int, _ channel: Int, _ index: Int) -> Float {
+            guard let samples = sounds[part]?.channels[channel] else { return 0 }
+            let source = index + shifts[part]
+            return samples.indices.contains(source) ? samples[source] : 0
+        }
+
+        var output = [[Float]](repeating: [Float](repeating: 0, count: frameCount), count: channelCount)
+        for part in parts.indices {
+            for channel in 0..<channelCount {
+                for index in starts[part]..<starts[part + 1] { output[channel][index] = frame(part, channel, index) }
+            }
+        }
+        // Each seam blends from the shot before, played on past its cut, into the shot after, from before its own.
+        let halfFade = Int(crossfade * rate / 2)
+        for part in parts.indices.dropFirst() {
+            let seam = starts[part]
+            let half = min(halfFade, seam - starts[part - 1], starts[part + 1] - seam)
+            guard half > 0 else { continue }
+            for index in (seam - half)..<(seam + half) {
+                let progress = (Float(index - seam + half) + 0.5) / Float(2 * half) * .pi / 2
+                for channel in 0..<channelCount {
+                    output[channel][index] = frame(part - 1, channel, index) * cos(progress) + frame(part, channel, index) * sin(progress)
+                }
+            }
+        }
+        try writePCM(output, rate: rate, to: url)
+        return true
+    }
+
+    /// One shot's sound at `rate`, one array per channel, and when its first frame plays on the movie's clock; nil
+    /// when it has none.
+    private static func decodedSound(of shot: Shot, rate: Double, channelCount: Int) throws -> (channels: [[Float]], start: Double)? {
+        guard let track = shot.source.audioTrack else { return nil }
+        let reader = try AVAssetReader(asset: shot.source.asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: rate,
+            AVNumberOfChannelsKey: channelCount,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ])
+        reader.add(output)
+        guard reader.startReading() else { throw reader.error ?? LivePhotoJoinError.exportFailed }
+        var interleaved: [Float] = []
+        var start: Double?
+        while let sample = output.copyNextSampleBuffer() {
+            guard let block = CMSampleBufferGetDataBuffer(sample) else { continue }
+            if start == nil { start = sample.presentationTimeStamp.seconds }
+            let length = CMBlockBufferGetDataLength(block)
+            var chunk = [Float](repeating: 0, count: length / MemoryLayout<Float>.size)
+            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: $0.baseAddress!) }
+            interleaved += chunk
+        }
+        guard reader.status == .completed else { throw reader.error ?? LivePhotoJoinError.exportFailed }
+        let channels = (0..<channelCount).map { channel in
+            stride(from: channel, to: interleaved.count, by: channelCount).map { interleaved[$0] }
+        }
+        return (channels, start ?? 0)
+    }
+
+    /// Writes the samples as interleaved 16-bit PCM, which a composition can insert; the file closes on return.
+    private static func writePCM(_ channels: [[Float]], rate: Double, to url: URL) throws {
+        let frames = channels.first?.count ?? 0
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: AVAudioChannelCount(channels.count)),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(max(frames, 1)))
+        else { throw LivePhotoJoinError.exportFailed }
+        buffer.frameLength = AVAudioFrameCount(frames)
+        for (index, channel) in channels.enumerated() {
+            channel.withUnsafeBufferPointer { buffer.floatChannelData![index].update(from: $0.baseAddress!, count: frames) }
+        }
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: rate,
+            AVNumberOfChannelsKey: channels.count,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ], commonFormat: .pcmFormatFloat32, interleaved: false)
+        try file.write(from: buffer)
     }
 
     /// The first shot's camera and place, and when its first frame was taken, to the millisecond.
@@ -326,7 +445,6 @@ private struct Shot: @unchecked Sendable {
     let shot: LivePhotoShot
     let source: SourceMedia
     let videoRange: CMTimeRange
-    let audioRange: CMTimeRange
     /// When the movie's first frame was taken.
     let start: Date?
     /// Whether `start` comes from the photo, to the millisecond, rather than the movie's date, to the second.
@@ -345,7 +463,6 @@ private struct Shot: @unchecked Sendable {
     static func load(_ shot: LivePhotoShot, decodingFrames: Bool) async throws -> Shot {
         let source = try await SourceMedia.load(shot.movieURL)
         let videoRange = try await source.videoTrack.load(.timeRange)
-        let audioRange = try await source.audioTrack?.load(.timeRange) ?? .zero
         // A Live Photo's movie marks where its photo was taken.
         let still = try await LivePhotoInspector.stillImageTime(in: source.asset)?.seconds ?? 0
         let photoDate = shot.photoURL.flatMap { photoDate(at: $0, fallbackOffset: source.capture.timeZoneOffset) }
@@ -353,7 +470,6 @@ private struct Shot: @unchecked Sendable {
             shot: shot,
             source: source,
             videoRange: videoRange,
-            audioRange: audioRange,
             start: (photoDate ?? source.capture.date)?.addingTimeInterval(-still),
             startIsPrecise: photoDate != nil,
             frames: decodingFrames ? try smallFrames(of: source) : []
