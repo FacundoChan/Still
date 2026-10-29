@@ -22,7 +22,7 @@ public enum PhotosSaveError: Error, LocalizedError {
     }
 }
 
-/// Adds a paired JPEG and MOV to the Photos library as one Live Photo asset.
+/// Adds a paired JPEG and MOV to the Photos library as one Live Photo asset, or plain videos.
 public enum PhotosLibrarySaver {
     /// Asks for add-only access the first time; afterwards returns the stored decision without asking.
     ///
@@ -54,15 +54,7 @@ public enum PhotosLibrarySaver {
                 let request = PHAssetCreationRequest.forAsset()
                 // Without these, Photos dates the asset now; the photo's Exif says the same.
                 if let date = pair.captureDate { request.creationDate = date }
-                if let location = pair.location {
-                    request.location = CLLocation(
-                        coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude),
-                        altitude: location.altitude ?? 0,
-                        horizontalAccuracy: location.horizontalAccuracy ?? 0,
-                        verticalAccuracy: location.altitude == nil ? -1 : 0,
-                        timestamp: pair.captureDate ?? Date()
-                    )
-                }
+                if let location = pair.location { request.location = location.clLocation(at: pair.captureDate) }
                 let photoOptions = PHAssetResourceCreationOptions()
                 photoOptions.originalFilename = "\(originalFilename).JPG"
                 let videoOptions = PHAssetResourceCreationOptions()
@@ -74,5 +66,57 @@ public enum PhotosLibrarySaver {
             if (error as? PHPhotosError)?.code == .accessUserDenied { throw PhotosSaveError.accessDenied }
             throw PhotosSaveError.saveFailed(error)
         }
+    }
+
+    // MARK: - Videos
+
+    /// A plain video to add to Photos, with when and where it was taken, which the library shows it by.
+    public struct Video: Sendable {
+        public var url: URL
+        public var date: Date?
+        public var location: CaptureLocation?
+        /// The name Photos records for it, without the extension.
+        public var originalFilename: String
+
+        public init(url: URL, date: Date?, location: CaptureLocation?, originalFilename: String) {
+            self.url = url
+            self.date = date
+            self.location = location
+            self.originalFilename = originalFilename
+        }
+    }
+
+    /// Adds the videos to Photos, each as a video of its own, in one change: they all arrive or none do. Returns once
+    /// Photos has confirmed. The files are copied, and stay where they are.
+    public static func save(_ videos: [Video]) async throws {
+        try await ensureAddAccess()
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                for video in videos {
+                    let request = PHAssetCreationRequest.forAsset()
+                    if let date = video.date { request.creationDate = date }
+                    if let location = video.location { request.location = location.clLocation(at: video.date) }
+                    let options = PHAssetResourceCreationOptions()
+                    options.originalFilename = "\(video.originalFilename).MOV"
+                    request.addResource(with: .video, fileURL: video.url, options: options)
+                }
+            }
+        } catch {
+            if (error as? PHPhotosError)?.code == .accessUserDenied { throw PhotosSaveError.accessDenied }
+            throw PhotosSaveError.saveFailed(error)
+        }
+    }
+}
+
+private extension CaptureLocation {
+    /// As Photos keeps an asset's place.
+    func clLocation(at date: Date?) -> CLLocation {
+        CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+            altitude: altitude ?? 0,
+            horizontalAccuracy: horizontalAccuracy ?? 0,
+            verticalAccuracy: altitude == nil ? -1 : 0,
+            timestamp: date ?? Date()
+        )
     }
 }

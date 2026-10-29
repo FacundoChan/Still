@@ -155,7 +155,7 @@ struct LivePhotoJoinTests {
 
     // MARK: - Helpers
 
-    private static func outputDirectory(_ name: String) throws -> URL {
+    static func outputDirectory(_ name: String) throws -> URL {
         let directory = Fixture.outputDirectory(for: name)
         try? FileManager.default.removeItem(at: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -164,7 +164,7 @@ struct LivePhotoJoinTests {
 
     /// Re-encodes part of a movie into a file of its own, which starts at zero, like a Live Photo's movie, dated
     /// `second` seconds into a minute.
-    private static func cut(_ source: URL, from start: Double, duration: Double, to destination: URL, dated second: Int) async throws {
+    static func cut(_ source: URL, from start: Double, duration: Double, to destination: URL, dated second: Int) async throws {
         let session = try #require(AVAssetExportSession(asset: AVURLAsset(url: source), presetName: AVAssetExportPresetHighestQuality))
         session.timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
                                         duration: CMTime(seconds: duration, preferredTimescale: 600))

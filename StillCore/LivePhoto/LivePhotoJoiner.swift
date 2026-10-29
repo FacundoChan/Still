@@ -22,6 +22,8 @@ public struct LivePhotoJoin: Sendable {
     public let shots: [LivePhotoShot]
     /// How each shot runs into the next, in the order they play.
     public let seams: [LivePhotoSeam]
+    /// When its first frame was taken, as the movie's creation date says.
+    public let date: Date?
 }
 
 /// Live Photos taken one after another, held the same way: each one's movie overlaps the one before, or starts a few
@@ -33,6 +35,23 @@ public struct LivePhotoMoment: Sendable {
     public let date: Date?
     /// About how long their joined movie runs, in seconds.
     public let duration: Double
+}
+
+/// Live Photos' motion as a plain video, as Photos' Save as Video makes one.
+public struct LivePhotoVideo: Sendable {
+    public let url: URL
+    /// The shots in the order they play.
+    public let shots: [LivePhotoShot]
+    public let duration: CMTime
+    /// As shown, with the movie's orientation applied.
+    public let size: CGSize
+    public let hasAudio: Bool
+    public let isHDR: Bool
+    /// When its first frame was taken.
+    public let date: Date?
+    /// Where the first shot was taken, as its photo says, which is where Photos puts the Live Photo; otherwise as its
+    /// movie says, to four places.
+    public let location: CaptureLocation?
 }
 
 /// How one shot's movie runs into the next one's.
@@ -94,19 +113,8 @@ public enum LivePhotoJoiner {
         segments.append(CMTimeRange(start: inPoint, end: loaded[loaded.count - 1].videoRange.end))
         let parts = zip(loaded, segments).filter { $0.1.duration > .zero }.map { Part(shot: $0.0, range: $0.1) }
         try Task.checkCancellation()
-
-        let soundURL = URL.temporaryDirectory.appending(path: "StillJoinedSound-\(UUID().uuidString).caf")
-        defer { try? FileManager.default.removeItem(at: soundURL) }
-        let sound = try await writeSound(of: parts, to: soundURL) ? AVURLAsset(url: soundURL) : nil
-        let soundTrack = try await sound?.loadTracks(withMediaType: .audio).first
-        let composition = try compose(parts, sound: soundTrack)
-        guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) else {
-            throw LivePhotoJoinError.exportFailed
-        }
-        session.metadata = try await metadata(for: loaded[0])
-        try await session.export(to: destination, as: .mov)
-        withExtendedLifetime((loaded, sound)) {}
-        return LivePhotoJoin(url: destination, shots: loaded.map(\.shot), seams: seams)
+        try await write(parts, to: destination)
+        return LivePhotoJoin(url: destination, shots: loaded.map(\.shot), seams: seams, date: parts[0].shot.start)
     }
 
     /// Sorts Live Photos into moments, in the order they were taken. A shot belongs to the moment before it when it was
@@ -277,6 +285,22 @@ public enum LivePhotoJoiner {
         let range: CMTimeRange
     }
 
+    /// The parts' pictures end to end, as they are, with their sound under them, into a movie of those two tracks
+    /// alone that has the first part's camera and place, and its starting time.
+    private static func write(_ parts: [Part], to destination: URL) async throws {
+        let soundURL = URL.temporaryDirectory.appending(path: "StillJoinedSound-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: soundURL) }
+        let sound = try await writeSound(of: parts, to: soundURL) ? AVURLAsset(url: soundURL) : nil
+        let soundTrack = try await sound?.loadTracks(withMediaType: .audio).first
+        let composition = try compose(parts, sound: soundTrack)
+        guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough) else {
+            throw LivePhotoJoinError.exportFailed
+        }
+        session.metadata = try await metadata(for: parts[0].shot)
+        try await session.export(to: destination, as: .mov)
+        withExtendedLifetime((parts, sound)) {}
+    }
+
     /// The parts' pictures end to end, with `sound`, already joined, under them.
     private static func compose(_ parts: [Part], sound: AVAssetTrack?) throws -> AVComposition {
         let composition = AVMutableComposition()
@@ -429,6 +453,36 @@ public enum LivePhotoJoiner {
         }
         return items
     }
+
+    // MARK: - As a video
+
+    /// The motion of one Live Photo, or of several taken one after another joined as `join` joins them, as a plain
+    /// video, as Photos' Save as Video makes one: the pictures as they are, and the sound, without the Live Photo's
+    /// other tracks and identifier, so Photos keeps it as a video of its own. It has the first shot's camera and
+    /// place, and is dated when its first frame was taken.
+    public static func video(of shots: [LivePhotoShot], to destination: URL) async throws -> LivePhotoVideo {
+        let played: (shots: [LivePhotoShot], date: Date?)
+        if shots.count > 1 {
+            let join = try await join(shots, to: destination)
+            played = (join.shots, join.date)
+        } else {
+            guard let shot = shots.first else { throw LivePhotoJoinError.notEnoughShots }
+            let loaded = try await Shot.load(shot, decodingFrames: false)
+            try await write([Part(shot: loaded, range: loaded.videoRange)], to: destination)
+            played = ([shot], loaded.start)
+        }
+        let video = try await SourceMedia.load(destination)
+        return LivePhotoVideo(
+            url: destination,
+            shots: played.shots,
+            duration: try await video.videoTrack.load(.timeRange).duration,
+            size: video.orientedSize,
+            hasAudio: video.audioTrack != nil,
+            isHDR: video.isHDR,
+            date: played.date,
+            location: played.shots[0].photoURL.flatMap(Shot.photoLocation(at:)) ?? video.capture.location
+        )
+    }
 }
 
 /// One shot, read: its movie, when the movie starts, and small copies of its frames to line it up by.
@@ -508,6 +562,26 @@ private struct Shot: @unchecked Sendable {
             date = date?.addingTimeInterval(fraction)
         }
         return date
+    }
+
+    /// Where the photo was taken, from its GPS tags, which keep more places than a movie's.
+    static func photoLocation(at url: URL) -> CaptureLocation? {
+        guard let image = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(image, 0, nil) as? [CFString: Any],
+              let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+              let latitude = gps[kCGImagePropertyGPSLatitude] as? Double,
+              let longitude = gps[kCGImagePropertyGPSLongitude] as? Double
+        else { return nil }
+        var location = CaptureLocation(
+            latitude: gps[kCGImagePropertyGPSLatitudeRef] as? String == "S" ? -latitude : latitude,
+            longitude: gps[kCGImagePropertyGPSLongitudeRef] as? String == "W" ? -longitude : longitude
+        )
+        if let altitude = gps[kCGImagePropertyGPSAltitude] as? Double {
+            // A reference of 1 is below sea level.
+            location.altitude = gps[kCGImagePropertyGPSAltitudeRef] as? Int == 1 ? -altitude : altitude
+        }
+        location.horizontalAccuracy = gps[kCGImagePropertyGPSHPositioningError] as? Double
+        return location
     }
 
     private static func smallFrames(of source: SourceMedia) throws -> [Frame] {
