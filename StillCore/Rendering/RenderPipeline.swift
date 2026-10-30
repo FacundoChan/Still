@@ -75,6 +75,13 @@ public enum RenderPipeline {
         try build(source: source, plan: plan, retimedAudio: nil)
     }
 
+    /// The graph for a copy of a video at its own pace: as `build`, but the frames keep the source's timing, so a
+    /// variable or fractional frame rate (29.97 fps) stays as it was. `plan.frameDuration` only fills gaps. For a speed
+    /// of 1, as a compressed copy of a video has.
+    public static func buildKeepingFrameTiming(source: SourceMedia, plan: EditPlan) throws -> RenderGraph {
+        try build(source: source, plan: plan, retimedAudio: nil, keepsFrameTiming: true)
+    }
+
     /// The export’s graph with its sound replaced by `retimedAudio`, a file from `writeRetimedAudio(to:)`.
     /// AVFoundation’s own time-pitch lags at speed-ups, so preview plays the export’s retimed sound instead.
     public static func buildPreview(source: SourceMedia, plan: EditPlan, retimedAudio: URL?) async throws -> RenderGraph {
@@ -94,7 +101,8 @@ public enum RenderPipeline {
     private static func build(
         source: SourceMedia,
         plan: EditPlan,
-        retimedAudio: (track: AVAssetTrack, duration: CMTime)?
+        retimedAudio: (track: AVAssetTrack, duration: CMTime)?,
+        keepsFrameTiming: Bool = false
     ) throws -> RenderGraph {
         let composition = AVMutableComposition()
         guard let videoTrack = composition.addMutableTrack(
@@ -156,7 +164,8 @@ public enum RenderPipeline {
             colorYCbCrMatrix: color.yCbCrMatrix,
             frameDuration: plan.frameDuration,
             instructions: [instruction],
-            renderSize: geometry.renderSize
+            renderSize: geometry.renderSize,
+            sourceTrackIDForFrameTiming: keepsFrameTiming ? videoTrack.trackID : kCMPersistentTrackID_Invalid
         ))
 
         return RenderGraph(

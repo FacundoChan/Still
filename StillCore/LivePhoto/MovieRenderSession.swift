@@ -339,7 +339,8 @@ final class MovieRenderSession: @unchecked Sendable {
 
     // MARK: - Settings
 
-    private static func videoSettings(for size: CGSize, output: OutputSettings) -> [String: Any] {
+    /// Also what `VideoRenderSession` encodes a compressed copy with.
+    static func videoSettings(for size: CGSize, output: OutputSettings) -> [String: Any] {
         let frameRate = Int(output.frameRate)
         var compression: [String: Any] = [
             AVVideoAverageBitRateKey: output.averageVideoBitRate(for: size),
