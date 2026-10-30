@@ -47,6 +47,14 @@ public enum EditRejection: Error, Sendable, Equatable, LocalizedError {
     }
 }
 
+/// What the edit is saved as.
+public enum OutputKind: String, Sendable, CaseIterable {
+    /// A Key Photo and up to 15 seconds of motion.
+    case livePhoto
+    /// A plain video of any length, at the size its choices give: a trimmed, cropped or smaller copy.
+    case video
+}
+
 /// The authoritative editing state and the rules that change it.
 ///
 /// A value type: every edit produces a complete new state, which makes undo a stack of snapshots.
@@ -64,7 +72,11 @@ public struct EditState: Sendable, Equatable {
     private static let tolerance = 1e-6
 
     public let source: SourceInfo
-    public private(set) var output: OutputSettings
+    public private(set) var kind = OutputKind.livePhoto
+    /// The Live Photo's settings, kept while the edit is a video.
+    public private(set) var livePhotoOutput: OutputSettings
+    /// The video's choices, kept while the edit is a Live Photo; nil when the facts a video needs aren't known.
+    public private(set) var video: VideoCompression?
     public private(set) var selectionStart: Double
     public private(set) var selectionEnd: Double
     public private(set) var speed: Double
@@ -81,15 +93,17 @@ public struct EditState: Sendable, Equatable {
     /// does; the plan carries them only once they're known.
     public private(set) var includesCaptions = false
 
-    /// The initial editing state for a newly opened source.
-    public init(source: SourceInfo, output: OutputSettings = .standard) throws {
+    /// The initial editing state for a newly opened source, a Live Photo to begin with. `video`, the facts a plain
+    /// video's choices depend on, lets the edit become one.
+    public init(source: SourceInfo, output: OutputSettings = .standard, video: CompressionSource? = nil) throws {
         guard source.duration >= Self.minimumSourceDuration - Self.tolerance else {
             throw EditRejection.sourceTooShort(seconds: source.duration, minimum: Self.minimumSourceDuration)
         }
         self.source = source
-        self.output = output
+        livePhotoOutput = output
         // HDR videos keep their HDR unless the user turns it off.
-        self.output.dynamicRange = source.isHDR ? .high : .standard
+        livePhotoOutput.dynamicRange = source.isHDR ? .high : .standard
+        self.video = video.map(VideoCompression.init)
         speed = 1
         cropAspect = .original
         cropRect = CropGeometry.fullFrame
@@ -102,6 +116,25 @@ public struct EditState: Sendable, Equatable {
     }
 
     // MARK: - Derived values
+
+    /// What the edit renders with: the Live Photo's settings, or the video's choices.
+    public var output: OutputSettings {
+        guard kind == .video, let video else { return livePhotoOutput }
+        var settings = video.output
+        // Any length the source and the speeds allow: the shortest selection at the fastest speed up to all of it at
+        // the slowest.
+        let shortest = Self.minimumSelectionLength / (Self.speeds.last ?? 1)
+        settings.durationRange = shortest...max(source.duration / (Self.speeds.first ?? 1), 1)
+        return settings
+    }
+
+    /// Whether the edit can become a plain video.
+    public var canMakeVideo: Bool { video != nil }
+
+    /// Whether a video keeps the source's frames and their timing, as a copy at its own frame rate and speed does.
+    public var keepsFrameTiming: Bool {
+        kind == .video && speed == 1 && video?.keepsOriginalFrameRate == true
+    }
 
     public var selectionLength: Double { selectionEnd - selectionStart }
 
@@ -162,7 +195,9 @@ public struct EditState: Sendable, Equatable {
     public var resolution: OutputResolution? { OutputResolution(maxLongEdge: output.maxLongEdge) }
 
     /// The current bit rate choice; nil when the output settings use a rate outside the choices.
-    public var bitRate: VideoBitRate? { VideoBitRate(bitsPerPixel: output.bitsPerPixel) }
+    public var bitRate: VideoBitRate? {
+        kind == .video ? video?.bitRate : VideoBitRate(bitsPerPixel: output.bitsPerPixel)
+    }
 
     /// The choice the menus show as chosen: the smallest that gives the current size. On a 720p video, 1080p gives
     /// the same size as 720p, so 720p shows as chosen even while 1080p is the one remembered; the remembered choice
@@ -184,7 +219,8 @@ public struct EditState: Sendable, Equatable {
     /// The video's average bit rate, in bits per second, at `bitRate` and the current size.
     public func videoBitRate(at bitRate: VideoBitRate) -> Int {
         var settings = output
-        settings.bitsPerPixel = bitRate.bitsPerPixel
+        // A video's rates are lower than a Live Photo's, as a camera's are; see `compressionBitsPerPixel`.
+        settings.bitsPerPixel = kind == .video ? video?.bitsPerPixel(at: bitRate) ?? 0 : bitRate.bitsPerPixel
         return settings.averageVideoBitRate(for: outputGeometry.renderSize)
     }
 
@@ -199,6 +235,10 @@ public struct EditState: Sendable, Equatable {
     public var canIncludeCaptions: Bool { source.hasAudio }
 
     public var canUseHDR: Bool { source.isHDR }
+
+    /// Whether HDR can be kept with the current choices: HDR is HEVC only, so a video in H.264 is standard range, as
+    /// iPhone records Most Compatible.
+    public var canKeepHDR: Bool { kind == .video ? video?.canKeepHDR == true : source.isHDR }
 
     /// The location the Live Photo would carry: the one the user chose, or else the video's.
     public var location: CaptureLocation? { chosenLocation ?? source.location }
@@ -237,6 +277,15 @@ public struct EditState: Sendable, Equatable {
         let size = outputGeometry.renderSize
         let pixels = Double(size.width * size.height)
         var videoBits = Double(output.averageVideoBitRate(for: size)) * outputDuration
+        if kind == .video {
+            if let calibration, calibration.pixelCount > 0 {
+                videoBits *= SizeCalibration.rateFactor(calibration.videoRateFactor, scaledBy: max(pixels / calibration.pixelCount, 1))
+            }
+            // AAC sound goes in as it is at its own speed; otherwise it's encoded, as `VideoExporter` does.
+            let sound = video?.source.audio.map { speed == 1 ? $0.outputBitRate : Double($0.encodedBitRate) } ?? 0
+            let audioBits = includesAudio ? sound * outputDuration : 0
+            return SizeEstimate(photo: 0, video: Int64((videoBits + audioBits) / 8))
+        }
         // JPEG at quality 0.92 averages about a third of a byte per pixel on camera footage. An HDR gain map adds
         // about a quarter.
         var jpegBytes = pixels * (isHDR ? 0.45 : 0.35)
@@ -390,12 +439,52 @@ public struct EditState: Sendable, Equatable {
 
     // MARK: - Output
 
+    /// Makes the edit a Live Photo or a video, each with its own resolution, bit rate and HDR choices. A Live Photo's
+    /// length is limited, so a longer selection shortens around the Key Photo. Ignored for a video when its facts aren't
+    /// known.
+    @discardableResult
+    public mutating func setKind(_ newKind: OutputKind) -> EditNotice? {
+        guard newKind != kind, newKind == .livePhoto || video != nil else { return nil }
+        kind = newKind
+        let range = output.durationRange
+        let fitted = min(max(outputDuration, range.lowerBound), range.upperBound)
+        guard abs(fitted - outputDuration) > Self.tolerance else {
+            clampKeyPhoto()
+            return nil
+        }
+        resize(toLength: min(fitted * speed, source.duration))
+        return .selectionResizedForSpeed(range)
+    }
+
+    /// Selects all of the source, or as much as the output's length allows, with the Key Photo in the middle.
+    public mutating func selectAll() {
+        place(start: 0, length: min(source.duration, allowedSelectionLengths.upperBound))
+        keyPhotoTime = (selectionStart + selectionEnd) / 2
+        clampKeyPhoto()
+    }
+
+    /// Changes the video's choices, whether or not the edit is a video now: its frame rate and format, or choices
+    /// remembered from an earlier video. Ignored when its facts aren't known.
+    public mutating func updateVideo(_ change: (inout VideoCompression) -> Void) {
+        guard var next = video else { return }
+        change(&next)
+        video = next
+    }
+
     public mutating func setResolution(_ resolution: OutputResolution) {
-        output.maxLongEdge = resolution.maxLongEdge
+        if kind == .video {
+            updateVideo { $0.setResolution(resolution) }
+        } else {
+            livePhotoOutput.maxLongEdge = resolution.maxLongEdge
+        }
     }
 
     public mutating func setBitRate(_ bitRate: VideoBitRate) {
-        output.bitsPerPixel = bitRate.bitsPerPixel
+        if kind == .video {
+            updateVideo { $0.setBitRate(bitRate) }
+        } else {
+            livePhotoOutput.bitsPerPixel = bitRate.bitsPerPixel
+        }
     }
 
     /// Ignored while there's no location to include.
@@ -415,9 +504,14 @@ public struct EditState: Sendable, Equatable {
         includesLocation = includesLocation && location != nil
     }
 
-    /// Ignored for SDR sources, which have no HDR to keep.
+    /// Ignored for SDR sources, which have no HDR to keep. A video remembers the choice while it's in H.264, so HDR comes
+    /// back with HEVC.
     public mutating func setHDR(_ on: Bool) {
-        output.dynamicRange = on && source.isHDR ? .high : .standard
+        if kind == .video {
+            updateVideo { $0.setKeepsHDR(on) }
+        } else {
+            livePhotoOutput.dynamicRange = on && source.isHDR ? .high : .standard
+        }
     }
 
     // MARK: - Crop

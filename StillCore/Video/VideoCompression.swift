@@ -201,7 +201,7 @@ public struct VideoCompression: Sendable, Equatable {
         )
     }
 
-    private func bitsPerPixel(at bitRate: VideoBitRate) -> Double {
+    func bitsPerPixel(at bitRate: VideoBitRate) -> Double {
         bitRate.compressionBitsPerPixel * (codec == .h264 ? Self.h264BitRateFactor : 1)
     }
 

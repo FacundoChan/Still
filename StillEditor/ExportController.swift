@@ -6,8 +6,8 @@ import StillCore
 
 /// Runs one export at a time for an editor window, with stages, cancellation, and recovery.
 ///
-/// Every export renders into a private staging folder first. Only a finished, verified pair is handed to
-/// Photos or moved into the user’s folder, so a cancelled or failed export never leaves a partial result
+/// Every export renders into a private staging folder first. Only a finished, verified pair, or a finished movie, is
+/// handed to Photos or moved into the user’s folder, so a cancelled or failed export never leaves a partial result
 /// where the user would find it.
 @Observable
 public final class ExportController {
@@ -29,6 +29,13 @@ public final class ExportController {
         case saved(Destination)
         case cancelled
         case failed
+    }
+
+    /// What an export makes.
+    public enum Kind: Equatable {
+        case livePhoto
+        /// A plain movie; `keepsFrameTiming` and `audio` as `VideoExporter` takes them.
+        case video(keepsFrameTiming: Bool, audio: CompressionSource.Audio?)
     }
 
     public private(set) var destination: Destination?
@@ -72,13 +79,15 @@ public final class ExportController {
         }
     }
 
-    /// Exports `plan`; returns once the pair is in Photos or the folder, or the export has ended otherwise.
-    public func run(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String) async -> Outcome {
+    /// Exports `plan` as a Live Photo or a video; returns once it is in Photos or the folder, or the export has ended
+    /// otherwise.
+    public func run(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String,
+                    as kind: Kind = .livePhoto) async -> Outcome {
         guard task == nil else { return .failed }
         self.destination = destination
         stage = .preparing
         failure = nil
-        let task = Task { await perform(destination, plan: plan, source: source, name: name) }
+        let task = Task { await perform(destination, plan: plan, source: source, name: name, kind: kind) }
         self.task = task
         let outcome = await task.value
         self.task = nil
@@ -102,7 +111,7 @@ public final class ExportController {
 
     // MARK: - Stages
 
-    private func perform(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String) async -> Outcome {
+    private func perform(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String, kind: Kind) async -> Outcome {
         let staging = TemporaryFiles.exports.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: staging) }
         do {
@@ -110,6 +119,11 @@ public final class ExportController {
                 // Asking before rendering means a refusal costs the user nothing.
                 try DebugHooks.simulateFailure(at: .photosAccess)
                 try await PhotosLibrarySaver.ensureAddAccess()
+            }
+            if case let .video(keepsFrameTiming, audio) = kind {
+                try await performVideo(destination, plan: plan, source: source, name: name, keepsFrameTiming: keepsFrameTiming,
+                                       audio: audio, in: staging)
+                return .saved(destination)
             }
             let baseName = switch destination {
             case .photos: "LivePhoto"
@@ -135,8 +149,54 @@ public final class ExportController {
             return .cancelled
         } catch {
             Self.log.error("Export failed: \(String(describing: error), privacy: .public)")
-            failure = ExportFailure(error, destination: destination, source: source)
+            failure = ExportFailure(error, destination: destination, source: source, isVideo: kind != .livePhoto)
             return .failed
+        }
+    }
+
+    /// A plain movie, named after the video, into Photos or a new folder of its own.
+    private func performVideo(_ destination: Destination, plan: EditPlan, source: SourceMedia, name: String,
+                              keepsFrameTiming: Bool, audio: CompressionSource.Audio?, in staging: URL) async throws {
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        let baseName = switch destination {
+        case .photos: "Video"
+        case let .folder(url): url.lastPathComponent
+        }
+        let video = try await VideoExporter().export(
+            plan, keepsFrameTiming: keepsFrameTiming, audio: audio, source: source,
+            to: staging.appending(path: "\(baseName).MOV"), progress: videoProgressHandler()
+        )
+        try DebugHooks.simulateFailure(at: .render)
+        try Task.checkCancellation()
+
+        stage = .saving
+        switch destination {
+        case .photos:
+            try DebugHooks.simulateFailure(at: .photosSave)
+            try await PhotosLibrarySaver.saveVideo(at: video.url, originalFilename: Self.photosFilename(for: name, isVideo: true),
+                                                   creationDate: video.captureDate, location: video.location)
+        case let .folder(folder):
+            // As for a Live Photo's pair: never into a folder that's there already.
+            let fileManager = FileManager.default
+            if fileManager.fileExists(atPath: folder.path) { throw LivePhotoExportError.destinationExists(folder) }
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: false)
+            try fileManager.moveItem(at: video.url, to: folder.appending(path: video.url.lastPathComponent))
+        }
+    }
+
+    private func videoProgressHandler() -> @Sendable (VideoExportStage) -> Void {
+        let frameDelay = DebugHooks.frameDelay
+        return { [weak self] stage in
+            if let frameDelay { Thread.sleep(forTimeInterval: frameDelay) }
+            Task { @MainActor in
+                guard let self, let current = self.stage else { return }
+                let next: Stage = switch stage {
+                case .preparing: .preparing
+                case let .compressing(fraction): .rendering(fraction)
+                case .finishing: .rendering(1)
+                }
+                if Self.order(of: next) >= Self.order(of: current) { self.stage = next }
+            }
         }
     }
 
@@ -170,14 +230,15 @@ public final class ExportController {
 
     /// Development builds name Photos resources so test assets are easy to find; release
     /// builds keep the video’s own name, as iPhone does for a Live Photo’s two resources.
-    private static func photosFilename(for sourceName: String) -> String {
+    private static func photosFilename(for sourceName: String, isVideo: Bool = false) -> String {
         #if DEBUG
         let stamp = Date.now.formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
             .replacingOccurrences(of: ":", with: "")
         return "StillTest-\(stamp)"
         #else
         let base = (sourceName as NSString).deletingPathExtension
-        return base.isEmpty ? String(localized: "Live Photo", bundle: #bundle) : base
+        guard base.isEmpty else { return base }
+        return isVideo ? String(localized: "Video", bundle: #bundle) : String(localized: "Live Photo", bundle: #bundle)
         #endif
     }
 }
@@ -216,7 +277,7 @@ public struct ExportFailure: Identifiable {
         self.recoveries = recoveries
     }
 
-    public init(_ error: Error, destination: ExportController.Destination, source: SourceMedia) {
+    public init(_ error: Error, destination: ExportController.Destination, source: SourceMedia, isVideo: Bool = false) {
         let toPhotos = destination == .photos
         let alternative: [Recovery] = toPhotos ? [.exportFiles] : []
 
@@ -258,14 +319,18 @@ public struct ExportFailure: Identifiable {
         } else if toPhotos, error is PhotosSaveError {
             self.init(
                 destination: destination,
-                title: String(localized: "Photos couldn’t save the Live Photo", bundle: #bundle),
+                title: isVideo
+                    ? String(localized: "Photos couldn’t save the video", bundle: #bundle)
+                    : String(localized: "Photos couldn’t save the Live Photo", bundle: #bundle),
                 message: Self.detail(of: error, fallback: String(localized: "Try again, or export the files and import them into Photos yourself.", bundle: #bundle)),
                 recoveries: [.tryAgain, .exportFiles]
             )
         } else {
             self.init(
                 destination: destination,
-                title: String(localized: "The Live Photo couldn’t be created", bundle: #bundle),
+                title: isVideo
+                    ? String(localized: "The video couldn’t be created", bundle: #bundle)
+                    : String(localized: "The Live Photo couldn’t be created", bundle: #bundle),
                 message: Self.detail(of: error, fallback: String(localized: "Try again. Your edits are unchanged.", bundle: #bundle)),
                 recoveries: [.tryAgain] + alternative
             )

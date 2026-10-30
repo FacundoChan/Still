@@ -23,8 +23,12 @@ public final class EditorModel {
     public private(set) var notice: String?
     /// The edit as it was when the video opened or was last saved or exported.
     public private(set) var savedState: EditState?
-    /// Whether the video has gone to Photos as a Live Photo since it opened.
+    /// Whether the video has gone to Photos, as a Live Photo or a video, since it opened.
     public private(set) var hasSavedToPhotos = false
+    /// How this video encodes as a video with the current choices, once pieces of it have been rendered; the Live Photo
+    /// preview measures the Live Photo instead.
+    public private(set) var videoCalibration: SizeCalibration?
+    public private(set) var isEstimatingVideo = false
     /// What the video says, word by word, once transcribed: the words of the captions drawn into the Live Photo.
     public private(set) var transcript: Transcript?
     public private(set) var isTranscribing = false
@@ -81,6 +85,8 @@ public final class EditorModel {
     @ObservationIgnored private var transcription: Task<Void, Never>?
     /// The language of the transcript, or of the transcription under way; empty while it's being worked out.
     @ObservationIgnored private var transcriptionLanguage: String?
+    @ObservationIgnored private var videoCalibrations: [(key: VideoCalibrationKey, calibration: SizeCalibration)] = []
+    @ObservationIgnored private var videoEstimateTask: Task<Void, Never>?
 
     public init() {
         playback.onPlaybackTime = { [weak self] time in
@@ -133,22 +139,28 @@ public final class EditorModel {
         )
     }
 
+    /// What the size estimate scales: how this video encodes as what the edit makes.
+    public var sizeCalibration: SizeCalibration? {
+        state?.kind == .video ? videoCalibration : livePreview.sizeCalibration
+    }
+
     // MARK: - Opening
 
-    /// Opens a video. `selectingAll` selects all of it, up to the longest Live Photo, rather than the first few
-    /// seconds, as for Live Photos joined to be seen together.
-    public func load(_ url: URL, selectingAll: Bool = false) async {
+    /// Opens a video as a Live Photo, or as a `kind` of output. `selectingAll` selects all of it, up to the longest Live
+    /// Photo, rather than the first few seconds, as for Live Photos joined to be seen together; a video starts with all
+    /// of it selected.
+    public func load(_ url: URL, selectingAll: Bool = false, as kind: OutputKind = .livePhoto) async {
         phase = .loading
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = url.startAccessingSecurityScopedResource() ? url : nil
         do {
             let media = try await SourceMedia.load(url)
-            var initial = try EditState(source: media.info)
+            // What a plain video's choices depend on; without it, the edit stays a Live Photo.
+            let videoFacts = try? await media.compressionSource()
+            var initial = try EditState(source: media.info, video: videoFacts)
             Self.applyRememberedOutput(to: &initial)
-            if selectingAll {
-                initial.setSelectionEnd(media.info.duration)
-                initial.setKeyPhoto(at: (initial.selectionStart + initial.selectionEnd) / 2)
-            }
+            initial.setKind(kind)
+            if selectingAll || initial.kind == .video { initial.selectAll() }
             if let previous = source, previous.url != url { TemporaryFiles.removeImportedCopy(previous.url) }
             source = media
             sourceName = url.lastPathComponent
@@ -160,6 +172,9 @@ public final class EditorModel {
             savedState = initial
             hasSavedToPhotos = false
             resetTranscript()
+            videoEstimateTask?.cancel()
+            videoCalibrations = []
+            videoCalibration = nil
             playhead = 0
             sourcePreviewPlan = nil
             detailFollowsPlayhead = true
@@ -235,6 +250,20 @@ public final class EditorModel {
         followSelection(ifMovedFrom: current)
     }
 
+    /// Ends a continuous gesture without keeping it: the state goes back to how the gesture found it, as when a second
+    /// finger turns a drag into a pinch.
+    public func cancelInteraction() {
+        defer {
+            interactionStart = nil
+            interactionNotice = nil
+            frozenDetailRange = nil
+        }
+        guard let start = interactionStart, let current = state, current != start else { return }
+        state = start
+        followSelection(ifMovedFrom: current)
+        didCommit(from: current)
+    }
+
     public func endInteraction(_ actionName: String) {
         defer {
             interactionStart = nil
@@ -295,14 +324,15 @@ public final class EditorModel {
 
     /// Whether the stage is showing the Key Photo frame, so it can say so.
     public var isShowingKeyPhoto: Bool {
-        guard let state, phase == .ready, !playback.isPlaying, !livePreview.isPlaying, !isCropMode,
+        guard let state, state.kind == .livePhoto, phase == .ready, !playback.isPlaying, !livePreview.isPlaying, !isCropMode,
               state.isInsideSelection(playhead) else { return false }
         return !offersMakeKeyPhoto
     }
 
-    /// The Make Key Photo bubble shows while paused on any frame but the Key Photo, as in Photos on iPhone.
+    /// The Make Key Photo bubble shows while paused on any frame but the Key Photo, as in Photos on iPhone. A video has
+    /// no Key Photo.
     public var offersMakeKeyPhoto: Bool {
-        guard let state, phase == .ready, !playback.isPlaying, !livePreview.isPlaying else { return false }
+        guard let state, state.kind == .livePhoto, phase == .ready, !playback.isPlaying, !livePreview.isPlaying else { return false }
         // Offered only when it would change something: the Key Photo resolves to the nearest rendered frame.
         var made = state
         made.makeKeyPhoto(at: playhead)
@@ -347,19 +377,44 @@ public final class EditorModel {
         edit(include ? "Turn Sound On" : "Turn Sound Off") { $0.setIncludesAudio(include) }
     }
 
+    /// Makes the edit a Live Photo or a video. A Live Photo's length is limited, so a longer selection shortens.
+    public func setKind(_ kind: OutputKind) {
+        var notice: EditNotice?
+        edit(kind == .video ? "Make Video" : "Make Live Photo") { notice = $0.setKind(kind) }
+        if let notice { show(notice.message) }
+    }
+
+    /// A Live Photo and a video each remember their own choices.
+    private var isVideo: Bool { state?.kind == .video }
+
     public func setResolution(_ resolution: OutputResolution) {
+        let key = isVideo ? Self.videoResolutionKey : Self.resolutionKey
         edit("Change Resolution") { $0.setResolution(resolution) }
-        UserDefaults.standard.set(resolution.rawValue, forKey: Self.resolutionKey)
+        UserDefaults.standard.set(resolution.rawValue, forKey: key)
     }
 
     public func setBitRate(_ bitRate: VideoBitRate) {
+        let key = isVideo ? Self.videoBitRateKey : Self.bitRateKey
         edit("Change Bit Rate") { $0.setBitRate(bitRate) }
-        UserDefaults.standard.set(bitRate.rawValue, forKey: Self.bitRateKey)
+        UserDefaults.standard.set(bitRate.rawValue, forKey: key)
     }
 
     public func setHDR(_ on: Bool) {
+        let key = isVideo ? Self.videoHDRKey : Self.hdrKey
         edit(on ? "Turn HDR On" : "Turn HDR Off") { $0.setHDR(on) }
-        UserDefaults.standard.set(on, forKey: Self.hdrKey)
+        UserDefaults.standard.set(on, forKey: key)
+    }
+
+    /// A video's frame rate; nil keeps the original's.
+    public func setFrameRate(_ rate: Int32?) {
+        edit("Change Frame Rate") { $0.updateVideo { $0.setFrameRate(rate) } }
+        UserDefaults.standard.set(Int(rate ?? 0), forKey: Self.videoFrameRateKey)
+    }
+
+    /// A video's format: HEVC, or H.264 for players that can't play HEVC.
+    public func setCodec(_ codec: OutputSettings.VideoCodec) {
+        edit("Change Format") { $0.updateVideo { $0.setCodec(codec) } }
+        UserDefaults.standard.set(codec == .h264 ? "h264" : "hevc", forKey: Self.videoCodecKey)
     }
 
     public func setIncludesLocation(_ include: Bool) {
@@ -396,6 +451,18 @@ public final class EditorModel {
         }
         state.setIncludesLocation(defaults.bool(forKey: locationKey))
         state.setIncludesCaptions(defaults.bool(forKey: captionsKey))
+        state.updateVideo { video in
+            if let resolution = defaults.string(forKey: videoResolutionKey).flatMap(OutputResolution.init(rawValue:)) {
+                video.setResolution(resolution)
+            }
+            if let bitRate = defaults.string(forKey: videoBitRateKey).flatMap(VideoBitRate.init(rawValue:)) {
+                video.setBitRate(bitRate)
+            }
+            let rate = defaults.integer(forKey: videoFrameRateKey)
+            if rate > 0 { video.limitFrameRate(to: Int32(rate)) }
+            if defaults.string(forKey: videoCodecKey) == "h264" { video.setCodec(.h264) }
+            if defaults.object(forKey: videoHDRKey) != nil { video.setKeepsHDR(defaults.bool(forKey: videoHDRKey)) }
+        }
     }
 
     private static let resolutionKey = "OutputResolution"
@@ -403,6 +470,13 @@ public final class EditorModel {
     private static let hdrKey = "HDR"
     private static let locationKey = "IncludesLocation"
     private static let captionsKey = "IncludesCaptions"
+    // A video's own choices, as Compress a Video remembered them.
+    private static let videoResolutionKey = "CompressionResolution"
+    private static let videoBitRateKey = "CompressionBitRate"
+    /// The highest frame rate chosen, or 0 for the original's.
+    private static let videoFrameRateKey = "CompressionFrameRate"
+    private static let videoCodecKey = "CompressionCodec"
+    private static let videoHDRKey = "CompressionHDR"
 
     /// Choosing a ratio enters Crop mode.
     public func setCropAspect(_ aspect: CropAspect) {
@@ -478,6 +552,7 @@ public final class EditorModel {
     }
 
     public func previewLivePhoto() {
+        guard state?.kind == .livePhoto else { return }
         guard state?.exportIssue == nil else {
             if let issue = state?.exportIssue?.errorDescription { show(issue) }
             return
@@ -581,11 +656,64 @@ public final class EditorModel {
         playback.setSourceItem(graph.makePlayerItem(), showing: playhead)
     }
 
-    /// Rebuilds the selection player and the Live Photo preview once edits settle.
+    /// Rebuilds the selection player and the Live Photo preview once edits settle; a video measures how it encodes
+    /// instead.
     private func scheduleRenders(includingSelection: Bool = true) {
         guard let source, let state else { return }
-        livePreview.schedule(plan(for: state), source: source, longEdge: stageLongEdge)
+        if state.kind == .video {
+            livePreview.stop()
+            scheduleVideoEstimate()
+        } else {
+            livePreview.schedule(plan(for: state), source: source, longEdge: stageLongEdge)
+        }
         if includingSelection { scheduleSelectionPreview() }
+    }
+
+    // MARK: - Video estimate
+
+    /// What a measurement depends on: the selection, sound, captions and location don't change how the picture
+    /// encodes, near enough.
+    private struct VideoCalibrationKey: Equatable {
+        let output: OutputSettings
+        let crop: CGRect
+        let speed: Double
+        let keepsFrameTiming: Bool
+    }
+
+    /// Measures how all of the video encodes with the current choices once they've settled, unless that's known
+    /// already. Until then, the estimate is the bit rate asked for.
+    private func scheduleVideoEstimate() {
+        videoEstimateTask?.cancel()
+        guard let source, let state, state.kind == .video else {
+            isEstimatingVideo = false
+            return
+        }
+        let key = VideoCalibrationKey(output: state.output, crop: state.cropRect, speed: state.speed,
+                                      keepsFrameTiming: state.keepsFrameTiming)
+        if let known = videoCalibrations.first(where: { $0.key == key }) {
+            videoCalibration = known.calibration
+            isEstimatingVideo = false
+            return
+        }
+        videoCalibration = nil
+        isEstimatingVideo = true
+        var whole = state.plan
+        whole.selection = CMTimeRange(start: .zero, duration: source.duration)
+        whole.keyPhotoSourceTime = .zero
+        videoEstimateTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            do {
+                let measured = try await VideoExporter().measure(whole, keepsFrameTiming: key.keepsFrameTiming, source: source,
+                                                                 in: TemporaryFiles.previews)
+                guard !Task.isCancelled, let self else { return }
+                videoCalibrations.append((key, measured))
+                videoCalibration = measured
+            } catch {
+                guard !Task.isCancelled else { return }
+            }
+            self?.isEstimatingVideo = false
+        }
     }
 
     // MARK: - Captions
@@ -736,11 +864,17 @@ public final class EditorModel {
     private func startExport(_ destination: ExportController.Destination, of snapshot: EditState) -> Task<Bool, Never> {
         playback.pause()
         livePreview.stop()
+        // A measurement would compete with the export for the encoder; it starts again once the export ends.
+        videoEstimateTask?.cancel()
         return Task {
+            defer { if videoCalibration == nil { scheduleVideoEstimate() } }
             guard let source else { return false }
             // Captions need their words: a transcription under way finishes first.
             if snapshot.includesCaptions { await captionsReady() }
-            let outcome = await export.run(destination, plan: plan(for: snapshot), source: source, name: sourceName)
+            let kind: ExportController.Kind = snapshot.kind == .video
+                ? .video(keepsFrameTiming: snapshot.keepsFrameTiming, audio: snapshot.video?.source.audio)
+                : .livePhoto
+            let outcome = await export.run(destination, plan: plan(for: snapshot), source: source, name: sourceName, as: kind)
             guard case let .saved(destination) = outcome else { return false }
             savedState = snapshot
             switch destination {
@@ -768,6 +902,7 @@ public final class EditorModel {
     /// Releases what the window holds once it has closed: players, renders, and the app’s own copies of files.
     public func close() {
         export.cancel()
+        videoEstimateTask?.cancel()
         selectionPreviewTask?.cancel()
         noticeTask?.cancel()
         resetTranscript()

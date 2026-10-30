@@ -42,8 +42,8 @@ public struct CompressedVideo: Sendable, Equatable {
     public let location: CaptureLocation?
 }
 
-/// Makes a smaller, or differently encoded, copy of a whole video with the render pipeline the Live Photo uses, so
-/// scaling, HDR and tone mapping are the same.
+/// Makes a plain video of an edit, or a smaller or differently encoded copy of a whole video, with the render pipeline
+/// the Live Photo uses, so trimming, speed, cropping, scaling, HDR, tone mapping and captions are the same.
 public struct VideoExporter: Sendable {
     /// Pieces of the video `measure` renders, and how long each is. The encoder spends more in its first second, about
     /// half as much again at Low, before it settles on the bit rate asked for, so each piece measures only what follows.
@@ -61,21 +61,36 @@ public struct VideoExporter: Sendable {
         to url: URL,
         progress: (@Sendable (VideoExportStage) -> Void)? = nil
     ) async throws -> CompressedVideo {
+        try await export(compression.plan(duration: source.duration), keepsFrameTiming: compression.keepsOriginalFrameRate,
+                         audio: compression.source.audio, source: source, to: url, progress: progress)
+    }
+
+    /// Renders `plan` of `source` into a new QuickTime movie at `url`: its selection at its speed, cropped and with its
+    /// captions, as a plain video. `keepsFrameTiming` keeps the source's frames and their timing, as a copy at its own
+    /// frame rate and speed does; `audio` is how the source's sound is stored. Never overwrites a file, and removes what
+    /// it wrote if rendering fails or is cancelled.
+    public func export(
+        _ plan: EditPlan,
+        keepsFrameTiming: Bool,
+        audio: CompressionSource.Audio?,
+        source: SourceMedia,
+        to url: URL,
+        progress: (@Sendable (VideoExportStage) -> Void)? = nil
+    ) async throws -> CompressedVideo {
         progress?(.preparing)
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: url.path) { throw VideoExportError.destinationExists(url) }
-        let plan = compression.plan(duration: source.duration)
         let capture = CaptureStamp(capture: source.capture, plan: plan)
         do {
-            let graph = try await render(compression, plan: plan, source: source, to: url, metadata: capture.movieItems,
-                                         progress: progress)
+            let graph = try await render(plan, keepsFrameTiming: keepsFrameTiming, audio: audio, source: source, to: url,
+                                         metadata: capture.movieItems, progress: progress)
             let bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
             return CompressedVideo(
                 url: url,
                 duration: plan.outputDuration,
                 pixelSize: graph.renderSize,
                 hasAudio: graph.hasAudio,
-                isHDR: compression.isHDR,
+                isHDR: plan.output.dynamicRange == .high,
                 byteCount: Int64(bytes),
                 captureDate: capture.movieDate,
                 location: capture.location
@@ -91,28 +106,40 @@ public struct VideoExporter: Sendable {
     /// the copy's own size without sound into a new folder inside `parent` and measured against the bit rate asked for.
     /// Removes what it rendered before returning.
     public func measure(_ compression: VideoCompression, source: SourceMedia, in parent: URL) async throws -> SizeCalibration {
+        try await measure(compression.plan(duration: source.duration), keepsFrameTiming: compression.keepsOriginalFrameRate,
+                          source: source, in: parent)
+    }
+
+    /// How `plan`'s selection encodes with its settings, as above: pieces of it at its speed and crop, without sound or
+    /// captions.
+    public func measure(_ plan: EditPlan, keepsFrameTiming: Bool, source: SourceMedia, in parent: URL) async throws -> SizeCalibration {
         let directory = parent.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        var silent = compression
-        silent.setIncludesAudio(false)
+        var silent = plan
+        silent.includesAudio = false
+        silent.captions = nil
         var asked = 0.0
         var spent = 0.0
-        let ranges = Self.sampleRanges(duration: source.duration)
+        var pixels = 0.0
+        let ranges = Self.sampleRanges(duration: plan.selection.duration)
         // A short video is measured whole, as its copy also has the encoder's first second.
         let settling = ranges.count > 1 ? Self.settlingSeconds : 0
         for (index, range) in ranges.enumerated() {
             try Task.checkCancellation()
             let url = directory.appending(path: "Sample\(index).mov")
-            let plan = silent.plan(duration: range.duration, start: range.start)
-            let graph = try await render(silent, plan: plan, source: source, to: url, metadata: [], progress: nil)
+            var piece = silent
+            piece.selection = CMTimeRange(start: plan.selection.start + range.start, duration: range.duration)
+            piece.keyPhotoSourceTime = piece.selection.start
+            let graph = try await render(piece, keepsFrameTiming: keepsFrameTiming, audio: nil, source: source, to: url,
+                                         metadata: [], progress: nil)
             spent += Double(try await Self.videoBytes(in: url, from: settling)) * 8
-            asked += Double(plan.output.averageVideoBitRate(for: graph.renderSize)) * (range.duration.seconds - settling)
+            asked += Double(piece.output.averageVideoBitRate(for: graph.renderSize)) * (piece.outputDuration.seconds - settling)
+            pixels = Double(graph.renderSize.width * graph.renderSize.height)
         }
         let measured = asked > 0 ? spent / asked : 1
-        let size = compression.renderSize
         return SizeCalibration(videoRateFactor: ranges.count > 1 ? Self.settledRateFactor(measured) : measured,
-                               photoBytesPerPixel: 0, pixelCount: Double(size.width * size.height))
+                               photoBytesPerPixel: 0, pixelCount: pixels)
     }
 
     /// Over a long video the encoder ends nearer the bit rate asked for than a piece's second second shows. Footage that
@@ -150,8 +177,9 @@ public struct VideoExporter: Sendable {
     }
 
     private func render(
-        _ compression: VideoCompression,
-        plan: EditPlan,
+        _ plan: EditPlan,
+        keepsFrameTiming: Bool,
+        audio sound: CompressionSource.Audio?,
         source: SourceMedia,
         to url: URL,
         metadata: [AVMetadataItem],
@@ -159,12 +187,13 @@ public struct VideoExporter: Sendable {
     ) async throws -> RenderGraph {
         try Task.checkCancellation()
         // The original's frame rate keeps its frames and their timing, so 29.97 fps and variable rates stay as they were.
-        let graph = compression.keepsOriginalFrameRate
+        let graph = keepsFrameTiming
             ? try RenderPipeline.buildKeepingFrameTiming(source: source, plan: plan)
             : try RenderPipeline.build(source: source, plan: plan)
         var audio: VideoRenderSession.Audio?
-        if graph.hasAudio, let sound = compression.source.audio, let track = source.audioTrack {
-            audio = sound.isAAC
+        if graph.hasAudio, let sound, let track = source.audioTrack {
+            // AAC at its own speed goes in as it is. At another speed, the mix output retimes the sound, so it's encoded.
+            audio = sound.isAAC && plan.speed == 1
                 ? .passthrough(try await track.load(.formatDescriptions).first)
                 : .encoded(sampleRate: sound.encodedSampleRate, channels: sound.encodedChannelCount, bitRate: sound.encodedBitRate)
         }
@@ -177,7 +206,7 @@ public struct VideoExporter: Sendable {
 }
 
 /// One pass that reads the render graph and writes a plain movie: frames as the compositor makes them, with their own
-/// timing, and the sound as it is or encoded as AAC.
+/// timing and the plan's captions drawn over them, and the sound as it is or encoded as AAC.
 ///
 /// Uses the AVAssetReader/AVAssetWriter pull APIs, as `MovieRenderSession` does. Unlike it, nothing is held in memory:
 /// the sound streams from the source, since a video can be long. It streams through a reader of its own: with one reader
@@ -202,6 +231,9 @@ final class VideoRenderSession: @unchecked Sendable {
     private let audioInput: AVAssetWriterInput?
     private let duration: CMTime
     private let progress: (@Sendable (VideoExportStage) -> Void)?
+    /// Captions to draw into the movie; nil leaves its frames as the compositor made them.
+    private let captions: CaptionOverlay?
+    private let dynamicRange: DynamicRange
 
     private let videoQueue = DispatchQueue(label: "Still.compress.video")
     private let audioQueue = DispatchQueue(label: "Still.compress.audio")
@@ -209,6 +241,9 @@ final class VideoRenderSession: @unchecked Sendable {
     // videoQueue only
     private var videoFinished = false
     private var reportedPercent = -1
+    private var captionCompositor: CaptionCompositor?
+    /// Why a frame couldn't be captioned, which ends the movie as failed.
+    private var videoError: Error?
     // audioQueue only
     private var audioFinished = false
 
@@ -227,6 +262,10 @@ final class VideoRenderSession: @unchecked Sendable {
         writer.shouldOptimizeForNetworkUse = true
         duration = plan.outputDuration
         self.progress = progress
+        dynamicRange = plan.output.dynamicRange
+        captions = plan.captions
+            .map { CaptionOverlay($0, plan: plan, renderSize: graph.renderSize) }
+            .flatMap { $0.cues.isEmpty ? nil : $0 }
 
         videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: graph.composition.tracks(withMediaType: .video), videoSettings: [
             kCVPixelBufferPixelFormatTypeKey as String: plan.output.dynamicRange.pixelFormat,
@@ -257,8 +296,9 @@ final class VideoRenderSession: @unchecked Sendable {
             output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
             input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: format)
         case let .encoded(sampleRate, channels, bitRate):
-            // The mix output downmixes and resamples to what the encoder takes.
-            output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: [
+            // The mix output downmixes and resamples to what the encoder takes, and retimes sound at another speed,
+            // keeping its pitch.
+            let mix = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: sampleRate,
                 AVNumberOfChannelsKey: channels,
@@ -267,6 +307,8 @@ final class VideoRenderSession: @unchecked Sendable {
                 AVLinearPCMIsNonInterleaved: false,
                 AVLinearPCMIsBigEndianKey: false,
             ])
+            mix.audioTimePitchAlgorithm = .spectral
+            output = mix
             input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVSampleRateKey: sampleRate,
@@ -333,7 +375,7 @@ final class VideoRenderSession: @unchecked Sendable {
     private func pumpVideo(completion: @escaping @Sendable () -> Void) {
         videoInput.requestMediaDataWhenReady(on: videoQueue) { [self] in
             while !videoFinished && videoInput.isReadyForMoreMediaData {
-                guard let sample = videoOutput.copyNextSampleBuffer(), videoInput.append(sample) else {
+                guard let sample = videoOutput.copyNextSampleBuffer(), videoError == nil, videoInput.append(captioned(sample)) else {
                     videoFinished = true
                     videoInput.markAsFinished()
                     completion()
@@ -341,6 +383,19 @@ final class VideoRenderSession: @unchecked Sendable {
                 }
                 report(CMSampleBufferGetPresentationTimeStamp(sample))
             }
+        }
+    }
+
+    /// `frame` with the caption showing at its time drawn over it, or `frame` itself when none is.
+    private func captioned(_ frame: CMSampleBuffer) -> CMSampleBuffer {
+        guard let cue = captions?.cue(at: CMSampleBufferGetPresentationTimeStamp(frame).seconds) else { return frame }
+        do {
+            let compositor = captionCompositor ?? CaptionCompositor(dynamicRange: dynamicRange)
+            captionCompositor = compositor
+            return try compositor.draw(cue, over: frame)
+        } catch {
+            videoError = error
+            return frame
         }
     }
 
@@ -373,6 +428,12 @@ final class VideoRenderSession: @unchecked Sendable {
 
     private func finish(_ continuation: CheckedContinuation<Void, Error>) {
         let readers = [reader, audioReader].compactMap(\.self)
+        if let videoError {
+            readers.forEach { $0.cancelReading() }
+            writer.cancelWriting()
+            continuation.resume(throwing: videoError)
+            return
+        }
         if let failed = readers.first(where: { $0.status == .failed }) {
             readers.forEach { $0.cancelReading() }
             writer.cancelWriting()
