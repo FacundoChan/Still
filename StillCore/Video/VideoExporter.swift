@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import os
 
 public enum VideoExportError: Error, LocalizedError {
     case destinationExists(URL)
@@ -237,6 +238,9 @@ final class VideoRenderSession: @unchecked Sendable {
 
     private let videoQueue = DispatchQueue(label: "Still.compress.video")
     private let audioQueue = DispatchQueue(label: "Still.compress.audio")
+    /// Set from any thread by cancelling; each queue then stops its own reader between samples. A reader cancelled
+    /// from elsewhere while its queue was copying a sample crashed Still.
+    private let cancelRequested = OSAllocatedUnfairLock(initialState: false)
 
     // videoQueue only
     private var videoFinished = false
@@ -340,8 +344,10 @@ final class VideoRenderSession: @unchecked Sendable {
     }
 
     private func cancel() {
-        reader.cancelReading()
-        audioReader?.cancelReading()
+        cancelRequested.withLock { $0 = true }
+        // While a queue waits for the writer, nothing there sees the flag; stop its reader there now.
+        videoQueue.async { [self] in reader.cancelReading() }
+        audioQueue.async { [self] in audioReader?.cancelReading() }
     }
 
     // MARK: - Pass
@@ -375,6 +381,7 @@ final class VideoRenderSession: @unchecked Sendable {
     private func pumpVideo(completion: @escaping @Sendable () -> Void) {
         videoInput.requestMediaDataWhenReady(on: videoQueue) { [self] in
             while !videoFinished && videoInput.isReadyForMoreMediaData {
+                if cancelRequested.withLock({ $0 }) { reader.cancelReading() }
                 guard let sample = videoOutput.copyNextSampleBuffer(), videoError == nil, videoInput.append(captioned(sample)) else {
                     videoFinished = true
                     videoInput.markAsFinished()
@@ -414,6 +421,7 @@ final class VideoRenderSession: @unchecked Sendable {
         audioInput.requestMediaDataWhenReady(on: audioQueue) { [self] in
             guard let audioInput = self.audioInput, let audioOutput = self.audioOutput else { return }
             while !audioFinished && audioInput.isReadyForMoreMediaData {
+                if cancelRequested.withLock({ $0 }) { audioReader?.cancelReading() }
                 guard let sample = audioOutput.copyNextSampleBuffer(), audioInput.append(sample) else {
                     audioFinished = true
                     audioInput.markAsFinished()

@@ -225,14 +225,19 @@ final class PlaybackRecorder {
     }()
 
     private func write(_ text: String) {
-        let line = "\(Self.stamp.string(from: .now)) \(text)\n"
+        Self.note(text)
+    }
+
+    /// A line from elsewhere in the editor, such as an export that failed, in time order with the players' own.
+    static func note(_ text: String) {
+        let line = "\(stamp.string(from: .now)) \(text)\n"
         guard let data = line.data(using: .utf8) else { return }
-        if let handle = try? FileHandle(forWritingTo: Self.url) {
+        if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()
             handle.write(data)
             try? handle.close()
         } else {
-            try? data.write(to: Self.url)
+            try? data.write(to: url)
         }
     }
 }
