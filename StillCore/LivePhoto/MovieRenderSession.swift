@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import os
 import VideoToolbox
 
 /// One pass that reads the render graph, writes the paired movie, and captures the Key Photo.
@@ -40,6 +41,11 @@ final class MovieRenderSession: @unchecked Sendable {
 
     private let videoQueue = DispatchQueue(label: "Still.render.video")
     private let audioQueue = DispatchQueue(label: "Still.render.audio")
+    /// Set from any thread by cancelling; the video queue then stops the reader between samples. On iPhone, a reader
+    /// cancelled from elsewhere while its queue waited for a sample left that queue waiting for good, holding its
+    /// decoders, or crashed Still. The editor's preview render is cancelled at every edit: after 76 minutes of
+    /// editing, 84 renders were stuck that way when Still crashed.
+    private let cancelRequested = OSAllocatedUnfairLock(initialState: false)
 
     // videoQueue only
     private var videoFinished = false
@@ -135,8 +141,12 @@ final class MovieRenderSession: @unchecked Sendable {
     }
 
     private func cancel() {
-        reader.cancelReading()
+        cancelRequested.withLock { $0 = true }
+        // While the queue waits for the writer, nothing there sees the flag; stop the reader there now.
+        videoQueue.async { [self] in reader.cancelReading() }
     }
+
+    private var isCancelled: Bool { cancelRequested.withLock { $0 } }
 
     // MARK: - Pass
 
@@ -208,6 +218,7 @@ final class MovieRenderSession: @unchecked Sendable {
     /// Returns false once every output frame has been queued.
     private func queueNextFrames() -> Bool {
         guard nextFrameIndex < frameCount, videoError == nil else { return false }
+        if isCancelled { reader.cancelReading() }
         guard !sourceFramesExhausted, let sample = videoOutput.copyNextSampleBuffer() else {
             sourceFramesExhausted = true
             // A cancelled or failed read also ends the samples; stop instead of filling the rest of the grid.
@@ -282,7 +293,7 @@ final class MovieRenderSession: @unchecked Sendable {
         audioInput.requestMediaDataWhenReady(on: audioQueue) { [self] in
             guard let audioInput = self.audioInput else { return }
             while !audioFinished && audioInput.isReadyForMoreMediaData {
-                guard nextAudioBuffer < audioBuffers.count, reader.status != .cancelled,
+                guard nextAudioBuffer < audioBuffers.count, !isCancelled,
                       audioInput.append(audioBuffers[nextAudioBuffer]) else {
                     audioFinished = true
                     audioInput.markAsFinished()

@@ -58,6 +58,9 @@ public final class PlaybackController {
     @ObservationIgnored private var itemGeneration = 0
     /// The source time most recently asked for, which a source item coming forward must show.
     @ObservationIgnored private var requestedSourceTime = 0.0
+    /// Each player's item, watched for failing; and how many fresh items in a row have failed on it too.
+    @ObservationIgnored private var failureObservers: [ObjectIdentifier: NSKeyValueObservation] = [:]
+    @ObservationIgnored private var failedReloads: [ObjectIdentifier: Int] = [:]
     #if DEBUG
     /// Notices a picture that stops while playing, and logs it.
     @ObservationIgnored let recorder = PlaybackRecorder()
@@ -91,6 +94,7 @@ public final class PlaybackController {
         standby.pause()
         standby.replaceCurrentItem(with: item)
         applySubtitles(to: item)
+        watchForFailure(of: item, on: standby)
         #if DEBUG
         recorder.attach(to: item)
         #endif
@@ -124,6 +128,7 @@ public final class PlaybackController {
         let wasPlayingSelection = isPlaying && showsSelectionPlayer
         selectionPlayer.replaceCurrentItem(with: item)
         applySubtitles(to: item)
+        watchForFailure(of: item, on: selectionPlayer)
         #if DEBUG
         recorder.attach(to: item)
         #endif
@@ -212,6 +217,7 @@ public final class PlaybackController {
         timeObservers.removeAll()
         endObservers.forEach(NotificationCenter.default.removeObserver)
         endObservers.removeAll()
+        failureObservers.removeAll()
         for player in sourcePlayers { player.replaceCurrentItem(with: nil) }
         selectionPlayer.replaceCurrentItem(with: nil)
         hasSelectionItem = false
@@ -249,20 +255,7 @@ public final class PlaybackController {
                 }
             }
         case .stillStalled:
-            guard let old = player.currentItem else { return }
-            let fresh = AVPlayerItem(asset: old.asset)
-            fresh.videoComposition = old.videoComposition
-            fresh.audioTimePitchAlgorithm = old.audioTimePitchAlgorithm
-            let time = player.currentTime()
-            player.replaceCurrentItem(with: fresh)
-            applySubtitles(to: fresh)
-            recorder.attach(to: fresh)
-            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, self.isPlaying else { return }
-                    player.play()
-                }
-            }
+            reload(player)
         }
     }
 
@@ -273,6 +266,63 @@ public final class PlaybackController {
             + "subtitles \(showsSubtitles), others playing \(others)"
     }
     #endif
+
+    // MARK: - Failed items
+
+    /// Notices `item` failing on `player`, as items do when iOS resets its media services ("Cannot Complete Action"). A
+    /// failed item shows no more pictures, so the stage stayed black until the video was opened again.
+    private func watchForFailure(of item: AVPlayerItem, on player: AVPlayer, isReload: Bool = false) {
+        let key = ObjectIdentifier(player)
+        if !isReload { failedReloads[key] = 0 }
+        failureObservers[key] = item.observe(\.status) { [weak self] _, _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.itemStatusChanged(onPlayer: key) } }
+        }
+    }
+
+    private func itemStatusChanged(onPlayer key: ObjectIdentifier) {
+        guard let player = (sourcePlayers + [selectionPlayer]).first(where: { ObjectIdentifier($0) == key }),
+              let item = player.currentItem
+        else { return }
+        // The standby source player's item is out of sight, and the next new item replaces it.
+        guard item.status == .failed, player !== sourcePlayers[1 - activeSource] else { return }
+        // While the media services come back, a fresh item can fail too; each try waits longer, up to five for
+        // each item the editor gives the player.
+        let tries = failedReloads[key, default: 0]
+        guard tries < 5 else { return }
+        failedReloads[key] = tries + 1
+        #if DEBUG
+        let error = item.error.map { String(describing: $0) } ?? "no error"
+        recorder.note("\(name(of: player)) failed (\(error)); reloading")
+        #endif
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250 << tries))
+            guard let self, player.currentItem === item else { return }
+            self.reload(player)
+        }
+    }
+
+    /// Gives `player` a fresh item of the same composition, at the same time, playing again if it was on stage.
+    private func reload(_ player: AVPlayer) {
+        guard let old = player.currentItem else { return }
+        let fresh = AVPlayerItem(asset: old.asset)
+        fresh.videoComposition = old.videoComposition
+        fresh.audioTimePitchAlgorithm = old.audioTimePitchAlgorithm
+        let time = player.currentTime()
+        player.replaceCurrentItem(with: fresh)
+        applySubtitles(to: fresh)
+        watchForFailure(of: fresh, on: player, isReload: true)
+        #if DEBUG
+        recorder.attach(to: fresh)
+        #endif
+        player.seek(to: time.isNumeric ? time : .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isPlaying,
+                      player === (self.showsSelectionPlayer ? self.selectionPlayer : self.sourcePlayer)
+                else { return }
+                player.play()
+            }
+        }
+    }
 
     // MARK: - Subtitles
 
