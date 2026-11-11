@@ -5,7 +5,7 @@ import Testing
 
 /// Cancelled or failed exports leave nothing that looks like a finished Live Photo,
 /// and progress moves through the documented stages.
-@Suite("Export recovery", .serialized)
+@Suite("Export recovery", .serialized, .mediaTimeLimit)
 struct ExportRecoveryTests {
     private static let fixture = Fixture.goalA[0]
 

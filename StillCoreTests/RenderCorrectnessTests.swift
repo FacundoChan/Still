@@ -58,7 +58,7 @@ struct RenderCase: Sendable, CustomTestStringConvertible {
     ]
 }
 
-@Suite("Render correctness", .serialized)
+@Suite("Render correctness", .serialized, .mediaTimeLimit)
 struct RenderCorrectnessTests {
     /// Decoded export frames match what preview playback shows at PSNR ≥ 35 dB.
     static let parityThreshold = 35.0

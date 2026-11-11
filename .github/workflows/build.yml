@@ -31,7 +31,7 @@ jobs:
       # Only releases need notarizing, and skipping it keeps every other run a few minutes shorter.
       NOTARIZE: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Select Xcode
         run: sudo xcode-select --switch "$XCODE" && xcodebuild -version
@@ -41,7 +41,7 @@ jobs:
 
       - name: Cache synthetic fixtures
         id: fixtures
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: Fixtures/synthetic
           key: fixtures-${{ hashFiles('Scripts/make-fixtures.sh') }}
@@ -50,7 +50,10 @@ jobs:
         if: steps.fixtures.outputs.cache-hit != 'true'
         run: Scripts/make-fixtures.sh
 
+      # The suite takes a few minutes; a test that hangs fails on its own time limit, and this stops the step
+      # when a hang leaves the tests no thread to time themselves with, before the job's limit cancels everything.
       - name: Test
+        timeout-minutes: 20
         run: |
           xcodegen generate
           # No certificate on the runner: sign ad hoc. The iPhone clips aren't in the repository,
@@ -59,12 +62,13 @@ jobs:
           mkdir -p build
           xcodebuild test -project Still.xcodeproj -scheme Still -destination 'platform=macOS' \
             -derivedDataPath build/DerivedData.noindex -resultBundlePath build/TestResults.xcresult \
-            CODE_SIGN_IDENTITY=- | tee build/test.log | grep -E "^(✔|✘|◇ Suite|\*\*)|↳|MEASURE|error:" || true
+            CODE_SIGN_IDENTITY=- | tee build/test.log | grep --line-buffered -E "^(✔|✘|◇ Suite|\*\*)|↳|MEASURE|error:" || true
           grep -q "\*\* TEST SUCCEEDED \*\*" build/test.log
 
+      # Also when the Test step times out or the run is cancelled, so a hang leaves its log behind.
       - name: Upload test results
-        if: failure()
-        uses: actions/upload-artifact@v4
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v6
         with:
           name: test-results
           path: |
@@ -121,7 +125,7 @@ jobs:
           Scripts/package.sh "${args[@]}"
 
       - name: Upload build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Still-${{ github.run_number }}
           path: build/dist/*

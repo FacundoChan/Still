@@ -7,7 +7,7 @@ import Testing
 
 /// Live Photos saved as a plain video, as Photos' Save as Video does: the motion as it is, with its sound, dated and
 /// placed as the first Live Photo was.
-@Suite("Live Photos as a video", .serialized)
+@Suite("Live Photos as a video", .serialized, .mediaTimeLimit)
 struct LivePhotoVideoTests {
     /// A piece of the flash-and-beep clip, standing in for a Live Photo's movie, keeps its pictures, its sound in step
     /// with them, and its date.

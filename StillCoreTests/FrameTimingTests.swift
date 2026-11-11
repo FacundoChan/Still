@@ -55,7 +55,7 @@ struct TimingCase: Sendable, CustomTestStringConvertible {
     }
 }
 
-@Suite("Frame timing", .serialized)
+@Suite("Frame timing", .serialized, .mediaTimeLimit)
 struct FrameTimingTests {
     /// Every output frame shows the source frame the time model predicts:
     /// output frame k at k / 30 s shows source time start + k / 30 × speed.

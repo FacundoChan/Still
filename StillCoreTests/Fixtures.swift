@@ -37,6 +37,13 @@ struct Fixture: Sendable, CustomTestStringConvertible {
     }
 }
 
+extension Trait where Self == TimeLimitTrait {
+    /// For suites that render or read media. The slowest test takes under 20 seconds on a Mac, so one still running
+    /// after five minutes has hung, and fails by name instead of holding up the whole run. (A hang that blocks every
+    /// Swift concurrency thread leaves none to time it; the CI step's own limit stops that.)
+    static var mediaTimeLimit: Self { .timeLimit(.minutes(5)) }
+}
+
 extension Fixture {
     static let portrait = CGSize(width: 1080, height: 1920)
     static let landscape = CGSize(width: 1920, height: 1080)
