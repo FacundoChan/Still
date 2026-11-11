@@ -261,6 +261,13 @@ final class CaptionCompositor {
     }
 
     func draw(_ cue: CaptionOverlay.Cue, over frame: CMSampleBuffer) throws -> CMSampleBuffer {
+        // Core Image leaves what it drew with autoreleased, holding the frame. On iPhone a movie's writer loop runs for
+        // minutes without returning, and every captioned frame stayed until it did: gigabytes, until iOS ended the
+        // export or Still.
+        try autoreleasepool { try compose(cue, over: frame) }
+    }
+
+    private func compose(_ cue: CaptionOverlay.Cue, over frame: CMSampleBuffer) throws -> CMSampleBuffer {
         guard let source = CMSampleBufferGetImageBuffer(frame) else { throw LivePhotoExportError.renderFailed }
         dynamicRange.tag(source)
         let output = try makeBuffer(like: source)

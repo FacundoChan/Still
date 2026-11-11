@@ -149,6 +149,10 @@ public final class ExportController {
             return .cancelled
         } catch {
             Self.log.error("Export failed: \(String(describing: error), privacy: .public)")
+            #if DEBUG
+            // The alert shows only the description; the codes say which part of AVFoundation gave up.
+            PlaybackRecorder.note("export failed: \(String(describing: error))")
+            #endif
             failure = ExportFailure(error, destination: destination, source: source, isVideo: kind != .livePhoto)
             return .failed
         }
