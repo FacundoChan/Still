@@ -334,7 +334,7 @@ public enum LivePhotoJoiner {
         let rate = description.mSampleRate
         // One or two channels, which is all AVAudioFormat's standard layouts allow.
         let channelCount = min(max(Int(description.mChannelsPerFrame), 1), 2)
-        let sounds = try parts.map { try decodedSound(of: $0.shot, rate: rate, channelCount: channelCount) }
+        let sounds = try await reading { try parts.map { try decodedSound(of: $0.shot, rate: rate, channelCount: channelCount) } }
 
         // Where each part starts in the output, in frames, and how far its shot's own frames sit from the output's.
         var starts: [Int] = []
@@ -485,6 +485,20 @@ public enum LivePhotoJoiner {
     }
 }
 
+/// Runs `read`, which reads a movie sample by sample, on a queue of its own, without holding a Swift concurrency thread
+/// while it waits.
+///
+/// `copyNextSampleBuffer` blocks its thread until each sample is decoded. Swift keeps one thread per core, and with
+/// three movies read at once on a 3-core Mac, such as a CI runner, all of them were blocked there while the decoding
+/// they waited for couldn't get a thread of its own. The join never finished.
+private func reading<T: Sendable>(_ read: @escaping @Sendable () throws -> T) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+        readingQueue.async { continuation.resume(with: Result(catching: read)) }
+    }
+}
+
+private let readingQueue = DispatchQueue(label: "Still.join.reading", attributes: .concurrent)
+
 /// One shot, read: its movie, when the movie starts, and small copies of its frames to line it up by.
 ///
 /// `@unchecked` for the same reason as `SourceMedia`.
@@ -526,7 +540,7 @@ private struct Shot: @unchecked Sendable {
             videoRange: videoRange,
             start: (photoDate ?? source.capture.date)?.addingTimeInterval(-still),
             startIsPrecise: photoDate != nil,
-            frames: decodingFrames ? try smallFrames(of: source) : []
+            frames: decodingFrames ? try await reading { try smallFrames(of: source) } : []
         )
     }
 
