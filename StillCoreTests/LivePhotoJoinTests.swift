@@ -5,7 +5,7 @@ import Testing
 @testable import StillCore
 
 /// Live Photos taken one after another share frames; joined, each moment plays once.
-@Suite("Joining Live Photos", .serialized)
+@Suite("Joining Live Photos", .serialized, .mediaTimeLimit)
 struct LivePhotoJoinTests {
     /// The frame-coded clip cut into three overlapping “Live Photos”, joined back frame for frame.
     @Test func joinsOverlappingMoviesFrameForFrame() async throws {

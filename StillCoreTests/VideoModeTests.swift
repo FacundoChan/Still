@@ -4,7 +4,7 @@ import Testing
 @testable import StillCore
 
 /// An edit saved as a plain video: its choices beside the Live Photo's, its length, its size, and the movie it makes.
-@Suite("Video mode", .serialized)
+@Suite("Video mode", .serialized, .mediaTimeLimit)
 struct VideoModeTests {
     static let source = SourceInfo(duration: 40, frameRate: 29.97, orientedSize: CGSize(width: 1920, height: 1080), hasAudio: true)
     static let facts = CompressionSource(

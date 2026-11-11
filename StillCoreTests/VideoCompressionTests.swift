@@ -5,7 +5,7 @@ import Testing
 @testable import StillCore
 
 /// Compressed copies of whole videos: the rules for the choices, and what the exporter writes.
-@Suite("Video compression", .serialized)
+@Suite("Video compression", .serialized, .mediaTimeLimit)
 struct VideoCompressionTests {
     // MARK: - Choices
 
@@ -279,6 +279,8 @@ struct VideoCompressionTests {
         let url = directory.appending(path: "Video.MOV")
         let started = AsyncStream<Void>.makeStream()
         let task = Task {
+            // An export that fails before it starts compressing ends the wait too, and fails the test below.
+            defer { started.continuation.finish() }
             try await VideoExporter().export(compression, source: source, to: url) { stage in
                 if case .compressing = stage { started.continuation.yield() }
             }

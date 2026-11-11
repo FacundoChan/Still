@@ -1,11 +1,12 @@
 import AVFoundation
 import CoreGraphics
 import ImageIO
+import Speech
 import Testing
 @testable import StillCore
 
 /// Captions drawn into the Live Photo's video: the transcript, how it's split into cues and timed, and the frames.
-@Suite("Captions", .serialized)
+@Suite("Captions", .serialized, .mediaTimeLimit)
 struct CaptionTests {
     static let speech = Fixture(
         name: "speech-sdr-30fps-6s.mov", kind: .synthetic, expectedSize: CGSize(width: 1280, height: 720), hasAudio: true, selectionStart: 0
@@ -32,7 +33,18 @@ struct CaptionTests {
 
     // MARK: - Transcription
 
-    @Test func transcribesWhatIsSaid() async throws {
+    /// Whether this Mac already has the English speech model. Transcribing downloads it otherwise, which is up to the
+    /// system, so a fresh CI runner skips the test.
+    static func hasSpeechModel() async -> Bool {
+        guard let language = await SpeechTranscription.supportedLanguage(for: "en-US") else { return false }
+        let transcriber = SpeechTranscriber(
+            locale: language, transcriptionOptions: [], reportingOptions: [], attributeOptions: [.audioTimeRange]
+        )
+        return await AssetInventory.status(forModules: [transcriber]) == .installed
+    }
+
+    @Test(.enabled("Needs the English speech model installed") { await hasSpeechModel() })
+    func transcribesWhatIsSaid() async throws {
         let source = try await SourceMedia.load(Self.speech.url)
         guard let language = await SpeechTranscription.supportedLanguage(for: "en-US") else { return }
         let transcript = try await SpeechTranscription.transcribe(source, language: language)

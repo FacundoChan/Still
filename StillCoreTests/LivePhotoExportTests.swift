@@ -6,7 +6,7 @@ import Testing
 @testable import StillCore
 
 /// Goal A inner loop: export each fixture and check the pair without touching the Photos library.
-@Suite("Live Photo export", .serialized)
+@Suite("Live Photo export", .serialized, .mediaTimeLimit)
 struct LivePhotoExportTests {
     @Test(arguments: Fixture.goalA.filter(\.isAvailable))
     func exportsRecognizedLivePhoto(_ fixture: Fixture) async throws {

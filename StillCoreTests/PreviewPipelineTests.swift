@@ -4,7 +4,7 @@ import Testing
 @testable import StillCore
 
 /// The selection preview plays the export's retimed sound.
-@Suite("Preview pipeline", .serialized)
+@Suite("Preview pipeline", .serialized, .mediaTimeLimit)
 struct PreviewPipelineTests {
     @MainActor
     @Test(arguments: [
