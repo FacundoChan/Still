@@ -38,10 +38,10 @@ struct Fixture: Sendable, CustomTestStringConvertible {
 }
 
 extension Trait where Self == TimeLimitTrait {
-    /// For suites that render or read media. The slowest test takes under 20 seconds on a Mac, so one still running
-    /// after five minutes has hung, and fails by name instead of holding up the whole run. (A hang that blocks every
-    /// Swift concurrency thread leaves none to time it; the CI step's own limit stops that.)
-    static var mediaTimeLimit: Self { .timeLimit(.minutes(5)) }
+    /// For suites that render or read media. The slowest test takes about 10 seconds on a CI runner, so one still
+    /// running after two minutes has hung, and fails by name instead of holding up the whole run. (A hang that blocks
+    /// every Swift concurrency thread leaves none to time it; the CI step's own limit stops that.)
+    static var mediaTimeLimit: Self { .timeLimit(.minutes(2)) }
 }
 
 extension Fixture {
