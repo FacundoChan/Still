@@ -488,9 +488,8 @@ public enum LivePhotoJoiner {
 /// Runs `read`, which reads a movie sample by sample, on a queue of its own, without holding a Swift concurrency thread
 /// while it waits.
 ///
-/// `copyNextSampleBuffer` blocks its thread until each sample is decoded. Swift keeps one thread per core, and with
-/// three movies read at once on a 3-core Mac, such as a CI runner, all of them were blocked there while the decoding
-/// they waited for couldn't get a thread of its own. The join never finished.
+/// `copyNextSampleBuffer` blocks its thread until each sample is decoded. Swift keeps one thread per core, so three
+/// movies read at once on a 3-core Mac, such as a CI runner, would leave it none for anything else.
 private func reading<T: Sendable>(_ read: @escaping @Sendable () throws -> T) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in
         readingQueue.async { continuation.resume(with: Result(catching: read)) }

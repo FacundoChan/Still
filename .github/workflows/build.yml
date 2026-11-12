@@ -50,8 +50,8 @@ jobs:
         if: steps.fixtures.outputs.cache-hit != 'true'
         run: Scripts/make-fixtures.sh
 
-      # The suite takes a few minutes; a test that hangs fails on its own time limit, and this stops the step
-      # when a hang leaves the tests no thread to time themselves with, before the job's limit cancels everything.
+      # The suite takes a few minutes; a test that hangs fails on its own time limit, and this step's limit stops a
+      # hang that leaves the tests no thread to time themselves with.
       - name: Test
         timeout-minutes: 20
         run: |
@@ -60,10 +60,20 @@ jobs:
           # so their test cases are skipped here.
           set -o pipefail
           mkdir -p build
-          xcodebuild test -project Still.xcodeproj -scheme Still -destination 'platform=macOS' \
-            -derivedDataPath build/DerivedData.noindex -resultBundlePath build/TestResults.xcresult \
-            CODE_SIGN_IDENTITY=- | tee build/test.log | grep --line-buffered -E "^(✔|✘|◇ Suite|\*\*)|↳|MEASURE|error:" || true
-          grep -q "\*\* TEST SUCCEEDED \*\*" build/test.log
+          run_tests() {
+            local log="$1"; shift
+            xcodebuild "$@" -project Still.xcodeproj -scheme Still -destination 'platform=macOS' \
+              -derivedDataPath build/DerivedData.noindex CODE_SIGN_IDENTITY=- \
+              | tee "$log" | grep --line-buffered -E "^(✔|✘|◇ Suite|\*\*)|↳|MEASURE|error:" || true
+            grep -qE "\*\* TEST (EXECUTE )?SUCCEEDED \*\*" "$log"
+          }
+          run_tests build/test.log test -resultBundlePath build/TestResults.xcresult && exit 0
+          # Decoding video on the runner sometimes stalls for good. When the only failures are tests that ran out
+          # of time, those run once more.
+          stalled=$(Scripts/stalled-tests.py build/TestResults.xcresult)
+          echo "::warning::Ran out of time, running once more: $(echo $stalled)"
+          run_tests build/rerun.log test-without-building -resultBundlePath build/Rerun.xcresult \
+            $(printf -- "-only-testing:%s " $stalled)
 
       # Also when the Test step times out or the run is cancelled, so a hang leaves its log behind.
       - name: Upload test results
@@ -74,6 +84,8 @@ jobs:
           path: |
             build/TestResults.xcresult
             build/test.log
+            build/Rerun.xcresult
+            build/rerun.log
             build/test-output
           retention-days: 7
 
